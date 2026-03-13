@@ -40,8 +40,9 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
   const [filter, setFilter] = useState<"all" | "wrong">("all");
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [submitted, setSubmitted] = useState(mode === "review");
+  const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [revealed, setRevealed] = useState(false); // review mode: phase 2
   const [streak, setStreak] = useState(0);
 
   const backHref = `/select/${mode}`;
@@ -50,8 +51,9 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
 
   useEffect(() => {
     setSelected(new Set());
-    setSubmitted(mode === "review");
+    setSubmitted(false);
     setIsCorrect(null);
+    setRevealed(false);
   }, [currentIndex, filter, mode]);
 
   const filteredQuestions = questions.filter((q) => {
@@ -134,9 +136,14 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
       if (e.target instanceof HTMLInputElement) return;
 
       if (mode === "review") {
-        if (e.key === "ArrowRight" || e.key === "Enter") handleKnow();
-        else if (e.key === "ArrowLeft")                  handleDontKnow();
-        else if (e.key === "Backspace")                  goPrev();
+        if (!revealed) {
+          if (e.key === "Enter" || e.key === " ") setRevealed(true);
+          else if (e.key === "Backspace") goPrev();
+        } else {
+          if (e.key === "ArrowRight" || e.key === "Enter") handleKnow();
+          else if (e.key === "ArrowLeft")                  handleDontKnow();
+          else if (e.key === "Backspace")                  goPrev();
+        }
         return;
       }
       const num = parseInt(e.key);
@@ -147,7 +154,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filteredQuestions, currentIndex, submitted, mode, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow]);
+  }, [filteredQuestions, currentIndex, submitted, revealed, mode, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow]);
 
   const ModeIcon = mode === "quiz" ? Brain : BookOpen;
   const isLast = currentIndex === filteredQuestions.length - 1;
@@ -155,8 +162,8 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     ? `${(currentIndex / (filteredQuestions.length - 1)) * 100}%`
     : "0%";
 
-  // Right panel is visible when: review mode (always shows answer) OR quiz mode wrong answer
-  const showRightPanel = mode === "review" || (submitted && isCorrect === false);
+  // Right panel: review when revealed, quiz only on wrong answer
+  const showRightPanel = (mode === "review" && revealed) || (mode === "quiz" && submitted && isCorrect === false);
 
   if (filteredQuestions.length === 0) {
     return (
@@ -239,7 +246,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
               question={q}
               selected={selected}
               onToggle={handleToggle}
-              submitted={submitted}
+              submitted={mode === "review" ? revealed : submitted}
               stat={stats[String(q.id)]}
               reviewMode={mode === "review"}
             />
@@ -295,14 +302,25 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
               </div>
             )}
 
-            {/* Review: know / don't know */}
-            {mode === "review" && (
+            {/* Review phase 1: reveal answer */}
+            {mode === "review" && !revealed && (
+              <button
+                onClick={() => setRevealed(true)}
+                className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
+              >
+                答えを見る
+                <span className="ml-2 text-xs font-normal opacity-40 hidden sm:inline">Enter</span>
+              </button>
+            )}
+
+            {/* Review phase 2: rate yourself */}
+            {mode === "review" && revealed && (
               <div className="flex gap-2">
                 <button onClick={handleDontKnow} disabled={isLast} className="flex-1 h-10 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30">
-                  <ThumbsDown size={14} strokeWidth={2} /> 知らない <span className="text-xs opacity-50 hidden sm:inline">←</span>
+                  <ThumbsDown size={14} strokeWidth={2} /> 知らなかった <span className="text-xs opacity-50 hidden sm:inline">←</span>
                 </button>
                 <button onClick={handleKnow} disabled={isLast} className="flex-1 h-10 rounded-xl border-2 border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30">
-                  <ThumbsUp size={14} strokeWidth={2} /> 知っている <span className="text-xs opacity-50 hidden sm:inline">→</span>
+                  <ThumbsUp size={14} strokeWidth={2} /> 知っていた <span className="text-xs opacity-50 hidden sm:inline">→</span>
                 </button>
               </div>
             )}
@@ -390,7 +408,9 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           />
           <span className="text-xs text-gray-300 tabular-nums w-4 shrink-0">{filteredQuestions.length}</span>
           <span className="text-xs text-gray-300 ml-2 shrink-0 hidden lg:block">
-            {mode === "review" ? "← 知らない  → 知っている  ⌫ 前へ" : "1–9 選択  Enter 回答/次へ  ←→ 前後"}
+            {mode === "review"
+              ? (revealed ? "← 知らなかった  → 知っていた  ⌫ 前へ" : "Enter: 答えを見る  ⌫ 前へ")
+              : "1–9 選択  Enter 回答/次へ  ←→ 前後"}
           </span>
         </div>
       </footer>
