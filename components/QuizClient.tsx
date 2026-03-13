@@ -158,7 +158,7 @@ export default function QuizClient({ questions, examId, examName, initialFilter,
       {/* Keyboard hint */}
       <p className="text-center text-xs text-gray-300 mt-6">
         {mode === "review"
-          ? "← 知らない　→ / Enter 知っている"
+          ? "← 知らない　→ / Enter 知っている　⌫ 前へ戻る"
           : "1–9 で選択　Enter で回答 / 次へ　← → で前後"}
       </p>
     </div>

@@ -78,9 +78,10 @@ export default function QuizQuestion({
         return;
       }
       if (reviewMode) {
-        // Flashcard: → or Enter = 知っている, ← = 知らない
+        // Flashcard: → or Enter = 知っている, ← = 知らない, Backspace = 前へ
         if (e.key === "ArrowRight" || e.key === "Enter") { onAnswer?.(true);  onNext?.(); return; }
         if (e.key === "ArrowLeft")                        { onAnswer?.(false); onNext?.(); return; }
+        if (e.key === "Backspace")                        { onPrev?.(); return; }
         return;
       }
       // Enter → submit or advance
@@ -263,24 +264,35 @@ export default function QuizQuestion({
 
       {/* Navigation — flashcard mode */}
       {reviewMode && (
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => { onAnswer?.(false); onNext?.(); }}
+              disabled={isLast && !hasNext}
+              className="flex-1 h-12 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30"
+            >
+              <ThumbsDown size={15} strokeWidth={2} />
+              知らない
+              <span className="text-xs font-normal opacity-50">←</span>
+            </button>
+            <button
+              onClick={() => { onAnswer?.(true); onNext?.(); }}
+              disabled={isLast && !hasNext}
+              className="flex-1 h-12 rounded-xl border-2 border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30"
+            >
+              <ThumbsUp size={15} strokeWidth={2} />
+              知っている
+              <span className="text-xs font-normal opacity-50">→</span>
+            </button>
+          </div>
           <button
-            onClick={() => { onAnswer?.(false); onNext?.(); }}
-            disabled={!hasNext && !isLast}
-            className="flex-1 h-12 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30"
+            onClick={onPrev}
+            disabled={!hasPrev}
+            className="w-full h-9 rounded-xl border border-gray-200 text-gray-400 text-xs hover:border-gray-300 hover:bg-gray-50 disabled:opacity-20 transition-all flex items-center justify-center gap-1.5"
           >
-            <ThumbsDown size={15} strokeWidth={2} />
-            知らない
-            <span className="text-xs font-normal opacity-50 ml-0.5">←</span>
-          </button>
-          <button
-            onClick={() => { onAnswer?.(true); onNext?.(); }}
-            disabled={!hasNext && !isLast}
-            className="flex-1 h-12 rounded-xl border-2 border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30"
-          >
-            <ThumbsUp size={15} strokeWidth={2} />
-            知っている
-            <span className="text-xs font-normal opacity-50 ml-0.5">→</span>
+            <ChevronLeft size={13} />
+            前の問題に戻る
+            <span className="opacity-50 ml-0.5">⌫</span>
           </button>
         </div>
       )}
