@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft, ChevronRight, RotateCcw } from "lucide-react";
 import type { ExamMeta, QuizStats } from "@/lib/types";
 
 interface Props {
@@ -21,7 +22,9 @@ function loadStats(examId: string): QuizStats {
 
 export default function ExamSelectClient({ exams, mode, lang }: Props) {
   const router = useRouter();
-  const [statsMap, setStatsMap] = useState<Record<string, { pct: number | null; answered: number; total: number; wrongCount: number }>>({});
+  const [statsMap, setStatsMap] = useState<Record<string, {
+    pct: number | null; answered: number; total: number; wrongCount: number;
+  }>>({});
 
   useEffect(() => {
     const map: typeof statsMap = {};
@@ -44,66 +47,82 @@ export default function ExamSelectClient({ exams, mode, lang }: Props) {
   const go = (examId: string, filter: "all" | "wrong") =>
     router.push(`/quiz/${examId}?mode=${mode}&filter=${filter}`);
 
-  const modeLabel = mode === "quiz" ? "🧠 クイズ" : "📖 フラッシュカード";
+  const accent = mode === "quiz" ? "blue" : "violet";
 
   return (
     <div>
-      <Link href={`/select/${mode}`} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 mb-2">
-        ← {modeLabel}
+      <Link
+        href={`/select/${mode}`}
+        className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 mb-8 transition-colors"
+      >
+        <ArrowLeft size={14} />
+        戻る
       </Link>
-      <h2 className="text-base font-bold text-gray-800 mb-5">
-        {lang === "ja" ? "🇯🇵 日本語" : "🇺🇸 English"} — 試験を選ぶ
-      </h2>
 
-      <div className="space-y-3">
+      <p className="text-sm font-medium text-gray-500 mb-4">
+        {lang === "ja" ? "日本語" : "English"} — 試験を選択
+      </p>
+
+      <div className="space-y-2.5">
         {exams.map((exam) => {
           const s = statsMap[exam.id];
           const pct = s?.pct ?? null;
+
           return (
-            <div key={exam.id} className="bg-white border border-gray-200 rounded-xl p-4">
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div>
+            <div key={exam.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              {/* Exam info row */}
+              <button
+                onClick={() => go(exam.id, "all")}
+                className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors group"
+              >
+                <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 text-sm leading-snug">{exam.name}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {exam.questionCount} 問
-                    {s && s.answered > 0 && ` · ${s.answered}/${s.total} 済`}
+                    {s && s.answered > 0 && (
+                      <span className="ml-2 text-gray-300">·</span>
+                    )}
+                    {s && s.answered > 0 && (
+                      <span className="ml-2">{s.answered}/{s.total} 回答済</span>
+                    )}
                   </p>
                 </div>
-                {pct !== null && (
-                  <span className={`text-lg font-bold shrink-0 ${pct >= 80 ? "text-green-600" : pct >= 60 ? "text-yellow-600" : "text-red-500"}`}>
-                    {pct}%
-                  </span>
-                )}
-              </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {pct !== null && (
+                    <span className={`text-base font-bold tabular-nums ${
+                      pct >= 80 ? "text-emerald-600" : pct >= 60 ? "text-amber-500" : "text-rose-500"
+                    }`}>
+                      {pct}%
+                    </span>
+                  )}
+                  <ChevronRight size={15} className="text-gray-300 group-hover:text-gray-400 transition-colors" />
+                </div>
+              </button>
 
+              {/* Progress bar */}
               {s && s.answered > 0 && pct !== null && (
-                <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-3">
+                <div className="h-0.5 bg-gray-100">
                   <div
-                    className={`h-full rounded-full ${pct >= 80 ? "bg-green-500" : pct >= 60 ? "bg-yellow-400" : "bg-red-400"}`}
+                    className={`h-full transition-all ${
+                      pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-400" : "bg-rose-400"
+                    }`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => go(exam.id, "all")}
-                  className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    mode === "quiz"
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
-                      : "bg-purple-600 text-white hover:bg-purple-700"
-                  }`}
-                >
-                  全問スタート
-                </button>
+              {/* Wrong answers row — only shown if there are wrong answers */}
+              {s && s.wrongCount > 0 && (
                 <button
                   onClick={() => go(exam.id, "wrong")}
-                  disabled={!s || s.wrongCount === 0}
-                  className="flex-1 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-full text-left px-5 py-3 flex items-center gap-2 border-t border-gray-100 hover:bg-rose-50 transition-colors group"
                 >
-                  誤答 {s?.wrongCount ? `(${s.wrongCount})` : ""}
+                  <RotateCcw size={13} className="text-rose-400 shrink-0" />
+                  <span className="text-xs text-rose-500 font-medium">
+                    誤答 {s.wrongCount} 問を復習
+                  </span>
                 </button>
-              </div>
+              )}
             </div>
           );
         })}
