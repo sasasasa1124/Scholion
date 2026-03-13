@@ -7,7 +7,7 @@ export default function ModePage() {
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
       <PageHeader />
 
-      <main className="flex-1 flex items-start justify-center pt-16 px-8">
+      <main className="flex-1 flex items-start justify-center pt-10 sm:pt-16 px-4 sm:px-8">
         <div className="w-full max-w-md">
           <p className="text-sm text-gray-400 mb-6">モードを選択</p>
 

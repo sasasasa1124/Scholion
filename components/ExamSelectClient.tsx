@@ -72,8 +72,8 @@ export default function ExamSelectClient({ exams, mode }: Props) {
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
       <PageHeader back={{ href: "/" }} title={modeLabel} right={langToggle} />
 
-      <div className="flex-1 px-8 py-6 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-4 max-w-3xl mx-auto">
+      <div className="flex-1 px-4 sm:px-8 py-6 overflow-y-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
           {filtered.map((exam) => {
             const s = statsMap[exam.id];
             const pct = s?.pct ?? null;

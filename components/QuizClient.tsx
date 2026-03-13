@@ -171,7 +171,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
 
   if (filteredQuestions.length === 0) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center gap-4">
+      <div className="h-screen flex flex-col items-center justify-center gap-4 px-4">
         <AlertCircle size={32} className="text-gray-300" />
         <p className="font-semibold text-gray-700">
           {filter === "wrong" ? "誤答問題がありません" : "問題がありません"}
@@ -193,17 +193,17 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#f8f9fb]">
       {/* ── Header ── */}
-      <header className="shrink-0 flex items-center justify-between px-6 h-12 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-4">
-          <Link href={backHref} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-gray-200 bg-white">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <Link href={backHref} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0">
             <ArrowLeft size={14} /> 戻る
           </Link>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <ModeIcon size={13} strokeWidth={1.75} />
-            <span>{examName}</span>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
+            <ModeIcon size={13} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate">{examName}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {streak >= 2 && (
             <div key={streak} className="quiz-streak-badge flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
               <Zap size={11} fill="currentColor" />
@@ -211,38 +211,42 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
             </div>
           )}
           {overallRate !== null && (
-            <span className={`text-xs font-semibold tabular-nums ${overallRate >= 80 ? "text-emerald-600" : overallRate >= 60 ? "text-amber-500" : "text-rose-500"}`}>
-              {totalCorrect}/{questions.length} 正解
+            <span className={`text-xs font-semibold tabular-nums hidden sm:inline ${overallRate >= 80 ? "text-emerald-600" : overallRate >= 60 ? "text-amber-500" : "text-rose-500"}`}>
+              {totalCorrect}/{questions.length}
               <span className="font-normal text-gray-400 ml-1">({overallRate}%)</span>
             </span>
           )}
           <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-            <button onClick={() => setFilter("all")} className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${filter === "all" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <Layers size={11} /> 全問 {questions.length}
+            <button onClick={() => setFilter("all")} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${filter === "all" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              <Layers size={11} /> <span className="hidden sm:inline">全問</span> {questions.length}
             </button>
-            <button onClick={() => setFilter("wrong")} disabled={wrongCount === 0} className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${filter === "wrong" ? "bg-white text-rose-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <AlertCircle size={11} /> 誤答 {wrongCount}
+            <button onClick={() => setFilter("wrong")} disabled={wrongCount === 0} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${filter === "wrong" ? "bg-white text-rose-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              <AlertCircle size={11} /> <span className="hidden sm:inline">誤答</span> {wrongCount}
             </button>
           </div>
         </div>
       </header>
 
-      {/* ── Main: two columns ── */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* ── Main ── */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-        {/* Left panel */}
-        <div className={`flex-1 flex flex-col overflow-hidden border-r border-gray-200 relative transition-colors duration-300 ${
-          resultInfo?.type === "correct" ? "bg-emerald-50" :
-          resultInfo?.type === "wrong"   ? "bg-rose-50" :
-          "bg-white"
-        }`}>
+        {/* Left panel: question + choices + action */}
+        <div className={`
+          min-h-0 flex-1 flex flex-col overflow-hidden
+          border-b lg:border-b-0 lg:border-r border-gray-200
+          relative transition-colors duration-300
+          ${submitted ? "lg:flex-1" : "flex-1"}
+          ${resultInfo?.type === "correct" ? "bg-emerald-50" :
+            resultInfo?.type === "wrong"   ? "bg-rose-50" :
+            "bg-white"}
+        `}>
           {/* Position indicator */}
-          <div className="shrink-0 px-8 pt-5 pb-3 flex items-center justify-between">
+          <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 flex items-center justify-between">
             <span className="text-xs tabular-nums text-gray-400">問 {currentIndex + 1} / {filteredQuestions.length}</span>
           </div>
 
           {/* Question + choices (scrollable) */}
-          <div className="flex-1 overflow-y-auto px-8 pb-4">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
             <QuizQuestion
               question={q}
               selected={selected}
@@ -254,7 +258,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           </div>
 
           {/* Action buttons */}
-          <div className="shrink-0 px-8 py-4 border-t border-gray-100">
+          <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100">
             {mode === "quiz" && !submitted && (
               <button
                 onClick={handleSubmit}
@@ -262,16 +266,16 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                 className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-25 hover:bg-gray-700 transition-colors"
               >
                 回答する
-                <span className="ml-2 text-xs font-normal opacity-40">Enter</span>
+                <span className="ml-2 text-xs font-normal opacity-40 hidden sm:inline">Enter</span>
               </button>
             )}
             {mode === "review" && (
               <div className="flex gap-2">
                 <button onClick={() => handleDontKnow(q)} disabled={isLast} className="flex-1 h-10 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30">
-                  <ThumbsDown size={14} strokeWidth={2} /> 知らない <span className="text-xs opacity-50">←</span>
+                  <ThumbsDown size={14} strokeWidth={2} /> 知らない <span className="text-xs opacity-50 hidden sm:inline">←</span>
                 </button>
                 <button onClick={() => handleKnow(q)} disabled={isLast} className="flex-1 h-10 rounded-xl border-2 border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-30">
-                  <ThumbsUp size={14} strokeWidth={2} /> 知っている <span className="text-xs opacity-50">→</span>
+                  <ThumbsUp size={14} strokeWidth={2} /> 知っている <span className="text-xs opacity-50 hidden sm:inline">→</span>
                 </button>
               </div>
             )}
@@ -280,12 +284,12 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           {/* Result overlay */}
           {resultInfo && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <div className={`quiz-result-toast rounded-2xl px-8 py-5 flex items-center gap-4 shadow-2xl ${
+              <div className={`quiz-result-toast rounded-2xl px-6 sm:px-8 py-4 sm:py-5 flex items-center gap-3 sm:gap-4 shadow-2xl ${
                 resultInfo.type === "correct" ? "bg-emerald-500" : "bg-rose-500"
               }`}>
                 {resultInfo.type === "correct"
-                  ? <CheckCircle2 size={44} className="text-white" strokeWidth={2.5} />
-                  : <XCircle     size={44} className="text-white" strokeWidth={2.5} />
+                  ? <CheckCircle2 size={40} className="text-white" strokeWidth={2.5} />
+                  : <XCircle     size={40} className="text-white" strokeWidth={2.5} />
                 }
                 <div>
                   <p className="text-white font-bold text-xl leading-tight">
@@ -304,10 +308,16 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
         </div>
 
         {/* Right panel: explanation */}
-        <div className="w-[420px] shrink-0 flex flex-col overflow-hidden bg-white">
+        <div className={`
+          flex flex-col overflow-hidden bg-white
+          ${!submitted
+            ? "hidden lg:flex lg:w-[420px] lg:shrink-0"
+            : "shrink-0 h-[40vh] lg:h-auto w-full lg:w-[420px] border-t lg:border-t-0 lg:border-l border-gray-200"
+          }
+        `}>
           {submitted ? (
             <>
-              <div className="shrink-0 px-8 pt-5 pb-3 border-b border-gray-100">
+              <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 border-b border-gray-100">
                 {mode === "quiz" && isCorrect !== null && (
                   <div className="flex items-center gap-2">
                     {isCorrect
@@ -321,7 +331,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-8 py-4">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4">
                 {q.explanation ? (
                   <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{q.explanation}</p>
                 ) : (
@@ -331,19 +341,19 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
               </div>
 
               {mode === "quiz" && (
-                <div className="shrink-0 px-8 py-4 border-t border-gray-100 flex gap-2">
+                <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100 flex gap-2">
                   <button onClick={goPrev} disabled={currentIndex === 0} className="flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-20 transition-all">
                     <ChevronLeft size={17} />
                   </button>
                   <button onClick={goNext} disabled={isLast} className="flex-1 h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-20 hover:bg-gray-700 transition-colors flex items-center justify-center gap-1.5">
-                    {isLast ? "完了" : <>次へ <ChevronRight size={15} /> <span className="text-xs opacity-40">Enter</span></>}
+                    {isLast ? "完了" : <>次へ <ChevronRight size={15} /> <span className="text-xs opacity-40 hidden sm:inline">Enter</span></>}
                   </button>
                 </div>
               )}
               {mode === "review" && (
-                <div className="shrink-0 px-8 py-4 border-t border-gray-100">
+                <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100">
                   <button onClick={goPrev} disabled={!currentIndex} className="w-full h-9 rounded-xl border border-gray-200 text-gray-400 text-xs hover:border-gray-300 hover:bg-gray-50 disabled:opacity-20 transition-all flex items-center justify-center gap-1.5">
-                    <ChevronLeft size={13} /> 前の問題に戻る <span className="opacity-50 ml-0.5">⌫</span>
+                    <ChevronLeft size={13} /> 前の問題に戻る <span className="opacity-50 ml-0.5 hidden sm:inline">⌫</span>
                   </button>
                 </div>
               )}
@@ -357,7 +367,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
       </div>
 
       {/* ── Footer: question map + slider ── */}
-      <footer className="shrink-0 border-t border-gray-200 bg-white px-6 pt-3 pb-2.5">
+      <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 pt-3 pb-2.5">
         {/* Question status segments */}
         <div className="flex items-end gap-px mb-2.5">
           {filteredQuestions.map((fq, i) => {
@@ -393,7 +403,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
             style={{ "--fill": sliderPct } as React.CSSProperties}
           />
           <span className="text-xs text-gray-300 tabular-nums w-4 shrink-0">{filteredQuestions.length}</span>
-          <span className="text-xs text-gray-300 ml-2 shrink-0">
+          <span className="text-xs text-gray-300 ml-2 shrink-0 hidden lg:block">
             {mode === "review" ? "← 知らない  → 知っている  ⌫ 前へ" : "1–9 選択  Enter 回答/次へ  ←→ 前後"}
           </span>
         </div>
