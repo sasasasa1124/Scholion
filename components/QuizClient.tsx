@@ -50,6 +50,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
 
   const [resultInfo, setResultInfo] = useState<ResultInfo | null>(null);
   const [streak, setStreak] = useState(0);
+  const [reviewKnew, setReviewKnew] = useState<boolean | null>(null);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const backHref = `/select/${mode}`;
@@ -61,6 +62,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     setSelected(new Set());
     setSubmitted(mode === "review");
     setIsCorrect(null);
+    setReviewKnew(null);
   }, [currentIndex, filter, mode]);
 
   const filteredQuestions = questions.filter((q) => {
@@ -127,6 +129,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
   const handleKnow = useCallback((q: Question) => {
     recordAnswer(q.id, true);
     setStreak((prev) => prev + 1);
+    setReviewKnew(true);
     showResultFeedback({ type: "correct", correctAnswer: "" });
     goNext();
   }, [recordAnswer, showResultFeedback, goNext]);
@@ -134,6 +137,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
   const handleDontKnow = useCallback((q: Question) => {
     recordAnswer(q.id, false);
     setStreak(0);
+    setReviewKnew(false);
     showResultFeedback({ type: "wrong", correctAnswer: q.answers.join(", ") });
     goNext();
   }, [recordAnswer, showResultFeedback, goNext]);
@@ -165,6 +169,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
 
   const ModeIcon = mode === "quiz" ? Brain : BookOpen;
   const isLast = currentIndex === filteredQuestions.length - 1;
+  const showExplanation = mode === "quiz" ? isCorrect === false : reviewKnew === false;
   const sliderPct = filteredQuestions.length > 1
     ? `${(currentIndex / (filteredQuestions.length - 1)) * 100}%`
     : "0%";
@@ -312,7 +317,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           flex flex-col overflow-hidden bg-white
           ${!submitted
             ? "hidden lg:flex lg:w-[420px] lg:shrink-0"
-            : "shrink-0 h-[40vh] lg:h-auto w-full lg:w-[420px] border-t lg:border-t-0 lg:border-l border-gray-200"
+            : `shrink-0 w-full lg:w-[420px] lg:h-auto border-t lg:border-t-0 lg:border-l border-gray-200 ${showExplanation ? "h-[40vh]" : "h-auto"}`
           }
         `}>
           {submitted ? (
@@ -331,14 +336,16 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4">
-                {q.explanation ? (
-                  <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{q.explanation}</p>
-                ) : (
-                  <p className="text-sm text-gray-300">解説なし</p>
-                )}
-                {q.source && <p className="text-xs text-gray-300 mt-4">出典: {q.source}</p>}
-              </div>
+              {showExplanation && (
+                <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4">
+                  {q.explanation ? (
+                    <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{q.explanation}</p>
+                  ) : (
+                    <p className="text-sm text-gray-300">解説なし</p>
+                  )}
+                  {q.source && <p className="text-xs text-gray-300 mt-4">出典: {q.source}</p>}
+                </div>
+              )}
 
               {mode === "quiz" && (
                 <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100 flex gap-2">
@@ -373,11 +380,12 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           {filteredQuestions.map((fq, i) => {
             const s = stats[String(fq.id)];
             const isCurrent = i === currentIndex;
+            const statusLabel = s === 1 ? "正解" : s === 0 ? "誤答" : "未回答";
             return (
               <button
                 key={fq.id}
                 onClick={() => setCurrentIndex(i)}
-                title={`問 ${i + 1}`}
+                title={`問 ${i + 1} · ${statusLabel}`}
                 className={`flex-1 rounded-full transition-all duration-150 cursor-pointer ${
                   isCurrent
                     ? "h-3 bg-gray-800"
