@@ -41,9 +41,10 @@ export default function QuizQuestion({
 
       {/* Question text */}
       <div className="bg-gray-50 rounded-xl px-5 py-4 mb-4 shrink-0">
-        <p className="text-gray-900 text-sm leading-relaxed font-medium whitespace-pre-wrap">
-          {question.question}
-        </p>
+        <div
+          className="text-gray-900 text-sm leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
+          dangerouslySetInnerHTML={{ __html: question.question }}
+        />
       </div>
 
       {/* Choices — scrollable if many */}

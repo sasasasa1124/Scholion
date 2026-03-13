@@ -265,7 +265,10 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                   {/* Question (display only) */}
                   <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                     <div className="bg-gray-50 rounded-xl px-5 py-4 mb-4">
-                      <p className="text-gray-900 text-sm leading-relaxed font-medium whitespace-pre-wrap">{q.question}</p>
+                      <div
+                        className="text-gray-900 text-sm leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
+                        dangerouslySetInnerHTML={{ __html: q.question }}
+                      />
                     </div>
                     <div className="space-y-2">
                       {q.choices.map((c, i) => (

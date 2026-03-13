@@ -56,7 +56,10 @@ export default function AnswersClient({ questions, examName }: Props) {
               問 {currentIndex + 1}
               {q.isMultiple && <span className="ml-2 text-violet-500 font-semibold">複数選択</span>}
             </p>
-            <p className="text-sm leading-relaxed text-gray-900 font-medium whitespace-pre-wrap">{q.question}</p>
+            <div
+              className="text-sm leading-relaxed text-gray-900 font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
+              dangerouslySetInnerHTML={{ __html: q.question }}
+            />
           </div>
 
           {/* Choices */}

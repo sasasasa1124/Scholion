@@ -14,17 +14,13 @@ const EXAM_NAMES: Record<string, string> = {
   ux_designer_exam: "UX Designer",
 };
 
-// Detect language from parsed CSV records.
-// Priority: 1) column header names  2) character-code majority vote across question text
+// Detect language from parsed CSV records via character-code majority vote.
 export function detectLanguage(records: Record<string, string>[]): "ja" | "en" {
   if (records.length === 0) return "ja";
 
-  // 1. Column header check — most reliable signal
-  const cols = Object.keys(records[0]);
-  if (cols.includes("質問")) return "ja";
-  if (cols.includes("question")) return "en";
-
-  // 2. Character-code majority vote across all rows
+  // Character-code majority vote across question/explanation values.
+  // Note: column headers are intentionally ignored because _en CSVs use
+  // Japanese header names while containing English question text.
   const jaRe = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF00-\uFFEF]/g;
   const enRe = /[A-Za-z]/g;
 
