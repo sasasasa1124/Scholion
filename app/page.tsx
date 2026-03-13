@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Brain, BookOpen, ChevronRight } from "lucide-react";
+import { Brain, BookOpen, BookOpenCheck, ChevronRight } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 
 export default function ModePage() {
@@ -32,9 +32,22 @@ export default function ModePage() {
                 </div>
                 <div>
                   <p className="font-semibold text-gray-900">フラッシュカード</p>
-                  <p className="text-xs text-gray-400 mt-1">答えを見ながら確認</p>
+                  <p className="text-xs text-gray-400 mt-1">知っていた / 知らなかった</p>
                 </div>
                 <ChevronRight size={15} className="text-gray-300 group-hover:text-violet-400 transition-colors mt-auto" />
+              </div>
+            </Link>
+
+            <Link href="/select/answers" className="group block col-span-2">
+              <div className="bg-white rounded-2xl border border-gray-200 px-6 py-5 flex items-center gap-4 hover:border-teal-400 hover:shadow-[0_0_0_3px_rgba(20,184,166,0.08)] transition-all duration-150">
+                <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
+                  <BookOpenCheck size={24} className="text-teal-600" strokeWidth={1.75} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-semibold text-gray-900">解答集</p>
+                  <p className="text-xs text-gray-400 mt-0.5">全問の正解と解説を一覧表示</p>
+                </div>
+                <ChevronRight size={15} className="text-gray-300 group-hover:text-teal-400 transition-colors" />
               </div>
             </Link>
           </div>

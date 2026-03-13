@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { RotateCcw, ChevronRight } from "lucide-react";
+import { RotateCcw, ChevronRight, Download, Upload, Plus, X } from "lucide-react";
 import type { ExamMeta, QuizStats } from "@/lib/types";
 import PageHeader from "./PageHeader";
 
 interface Props {
   exams: ExamMeta[];
-  mode: "quiz" | "review";
+  mode: "quiz" | "review" | "answers";
 }
 
 function loadStats(examId: string): QuizStats {
@@ -23,11 +23,49 @@ function loadStats(examId: string): QuizStats {
 }
 
 type LangFilter = "all" | "ja" | "en";
+type UploadStatus = "idle" | "uploading" | "done" | "error";
 
-export default function ExamSelectClient({ exams, mode }: Props) {
+const CSV_TEMPLATE_JA = `重複,#,質問,選択肢,解答,解説,ソース
+,1,問題文をここに記載,A. 選択肢A | B. 選択肢B | C. 選択肢C | D. 選択肢D,A,解説をここに記載,出典URL
+,2,複数選択の例,A. 選択肢A | B. 選択肢B | C. 選択肢C | D. 選択肢D | E. 選択肢E,"A,C",解説をここに記載,出典URL
+`;
+
+const CSV_TEMPLATE_EN = `duplicate,#,question,choices,answer,explanation,source
+,1,Enter question text here,A. Choice A | B. Choice B | C. Choice C | D. Choice D,A,Enter explanation here,Source URL
+,2,Multiple answer example,A. Choice A | B. Choice B | C. Choice C | D. Choice D | E. Choice E,"A,C",Enter explanation here,Source URL
+`;
+
+function downloadTemplate(lang: "ja" | "en") {
+  const content = lang === "ja" ? CSV_TEMPLATE_JA : CSV_TEMPLATE_EN;
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = lang === "ja" ? "quiz_template_ja.csv" : "quiz_template_en.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function uploadFile(file: File): Promise<ExamMeta> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  if (!res.ok) throw new Error(await res.text());
+  const { exam } = await res.json();
+  return exam as ExamMeta;
+}
+
+export default function ExamSelectClient({ exams: initialExams, mode }: Props) {
   const router = useRouter();
+  const [exams, setExams] = useState<ExamMeta[]>(initialExams);
   const [langFilter, setLangFilter] = useState<LangFilter>("all");
   const [statsMap, setStatsMap] = useState<Record<string, { pct: number | null; answered: number; total: number; wrongCount: number }>>({});
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const dragCountRef = useRef(0);
 
   useEffect(() => {
     const map: typeof statsMap = {};
@@ -46,9 +84,66 @@ export default function ExamSelectClient({ exams, mode }: Props) {
     setStatsMap(map);
   }, [exams]);
 
-  const filtered = exams.filter((e) => langFilter === "all" || e.language === langFilter);
+  const processFiles = useCallback(async (files: File[]) => {
+    const csvFiles = files.filter((f) => f.name.endsWith(".csv"));
+    if (csvFiles.length === 0) return;
 
-  const modeLabel = mode === "quiz" ? "クイズ" : "フラッシュカード";
+    setShowAdd(true);
+    setUploadStatus("uploading");
+    setUploadProgress({ done: 0, total: csvFiles.length });
+
+    let hasError = false;
+    for (let i = 0; i < csvFiles.length; i++) {
+      try {
+        const exam = await uploadFile(csvFiles[i]);
+        setExams((prev) => {
+          const exists = prev.find((e) => e.id === exam.id);
+          return exists ? prev.map((e) => (e.id === exam.id ? exam : e)) : [...prev, exam];
+        });
+      } catch {
+        hasError = true;
+      }
+      setUploadProgress({ done: i + 1, total: csvFiles.length });
+    }
+
+    setUploadStatus(hasError ? "error" : "done");
+    setUploadProgress(null);
+    setTimeout(() => setUploadStatus("idle"), 2000);
+    if (fileRef.current) fileRef.current.value = "";
+  }, []);
+
+  // Global drag & drop
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      dragCountRef.current++;
+      setIsDragging(true);
+    };
+    const onDragLeave = () => {
+      dragCountRef.current--;
+      if (dragCountRef.current === 0) setIsDragging(false);
+    };
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCountRef.current = 0;
+      setIsDragging(false);
+      processFiles(Array.from(e.dataTransfer?.files ?? []));
+    };
+    document.addEventListener("dragenter", onDragEnter);
+    document.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragenter", onDragEnter);
+      document.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("drop", onDrop);
+    };
+  }, [processFiles]);
+
+  const filtered = exams.filter((e) => langFilter === "all" || e.language === langFilter);
+  const modeLabel = mode === "quiz" ? "クイズ" : mode === "review" ? "フラッシュカード" : "解答集";
 
   const langToggle = (
     <div className="flex gap-1">
@@ -68,16 +163,36 @@ export default function ExamSelectClient({ exams, mode }: Props) {
     </div>
   );
 
+  const uploadStatusText =
+    uploadStatus === "uploading"
+      ? uploadProgress && uploadProgress.total > 1
+        ? `${uploadProgress.done}/${uploadProgress.total} 件...`
+        : "アップロード中..."
+      : uploadStatus === "done" ? "追加しました"
+      : uploadStatus === "error" ? "エラーが発生しました"
+      : null;
+
   return (
-    <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
+    <div className="min-h-screen bg-[#f8f9fb] flex flex-col relative">
+      {/* Drag & drop overlay */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-blue-500/10 backdrop-blur-[1px] pointer-events-none">
+          <div className="flex flex-col items-center gap-3 bg-white border-2 border-dashed border-blue-400 rounded-2xl px-10 py-8 shadow-xl">
+            <Upload size={32} className="text-blue-500" strokeWidth={1.5} />
+            <p className="text-sm font-semibold text-blue-700">CSVをドロップして追加</p>
+            <p className="text-xs text-blue-400">複数ファイル対応</p>
+          </div>
+        </div>
+      )}
+
       <PageHeader back={{ href: "/" }} title={modeLabel} right={langToggle} />
 
       <div className="flex-1 px-4 sm:px-8 py-6 overflow-y-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+          {/* Existing exam cards */}
           {filtered.map((exam) => {
             const s = statsMap[exam.id];
             const pct = s?.pct ?? null;
-
             return (
               <div key={exam.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col">
                 <button
@@ -110,7 +225,6 @@ export default function ExamSelectClient({ exams, mode }: Props) {
                     <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-400 transition-colors" />
                   </div>
                 </button>
-
                 {s && s.wrongCount > 0 && (
                   <div className="px-5 py-2.5 flex items-center gap-2 border-t border-gray-100">
                     <RotateCcw size={12} className="text-rose-300 shrink-0" />
@@ -120,6 +234,69 @@ export default function ExamSelectClient({ exams, mode }: Props) {
               </div>
             );
           })}
+
+          {/* Add card */}
+          {!showAdd ? (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="bg-white rounded-2xl border border-dashed border-gray-300 px-5 py-4 flex items-center gap-3 text-gray-400 hover:border-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all group"
+            >
+              <div className="w-8 h-8 rounded-lg border border-dashed border-gray-300 group-hover:border-gray-400 flex items-center justify-center transition-colors">
+                <Plus size={16} />
+              </div>
+              <span className="text-sm font-medium">問題集を追加</span>
+            </button>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-700">問題集を追加</p>
+                <button onClick={() => setShowAdd(false)} className="text-gray-300 hover:text-gray-500 transition-colors">
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Template download */}
+              <div>
+                <p className="text-xs text-gray-400 mb-2">テンプレートをダウンロード</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => downloadTemplate("ja")}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-all"
+                  >
+                    <Download size={12} /> JA
+                  </button>
+                  <button
+                    onClick={() => downloadTemplate("en")}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-all"
+                  >
+                    <Download size={12} /> EN
+                  </button>
+                </div>
+              </div>
+
+              {/* Drop zone */}
+              <div>
+                <p className="text-xs text-gray-400 mb-2">CSVをアップロード</p>
+                <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => processFiles(Array.from(e.target.files ?? []))} />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploadStatus === "uploading"}
+                  className={`w-full py-4 rounded-xl border-2 border-dashed text-sm transition-all ${
+                    uploadStatus === "done" ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                    : uploadStatus === "error" ? "border-rose-300 bg-rose-50 text-rose-500"
+                    : uploadStatus === "uploading" ? "border-blue-300 bg-blue-50 text-blue-500"
+                    : "border-gray-200 text-gray-400 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-1.5">
+                    <Upload size={18} strokeWidth={1.5} />
+                    <span>{uploadStatusText ?? "クリックまたはドラッグ&ドロップ"}</span>
+                    {uploadStatus === "idle" && <span className="text-xs text-gray-300">複数ファイル対応</span>}
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -10,14 +10,14 @@ export const dynamic = "force-dynamic";
 
 export default async function ExamSelectPage({ params }: Props) {
   const { mode } = await params;
-  if (mode !== "quiz" && mode !== "review") notFound();
+  if (mode !== "quiz" && mode !== "review" && mode !== "answers") notFound();
 
   const exams = getExamList();
 
   return (
     <ExamSelectClient
       exams={exams}
-      mode={mode as "quiz" | "review"}
+      mode={mode as "quiz" | "review" | "answers"}
     />
   );
 }

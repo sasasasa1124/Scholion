@@ -14,10 +14,34 @@ const EXAM_NAMES: Record<string, string> = {
   ux_designer_exam: "UX Designer",
 };
 
-// Parse "A. some text | B. other text" into Choice[]
+// Detect language from parsed CSV records.
+// Priority: 1) column header names  2) character-code majority vote across question text
+export function detectLanguage(records: Record<string, string>[]): "ja" | "en" {
+  if (records.length === 0) return "ja";
+
+  // 1. Column header check — most reliable signal
+  const cols = Object.keys(records[0]);
+  if (cols.includes("質問")) return "ja";
+  if (cols.includes("question")) return "en";
+
+  // 2. Character-code majority vote across all rows
+  const jaRe = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF00-\uFFEF]/g;
+  const enRe = /[A-Za-z]/g;
+
+  let jaQ = 0, enQ = 0;
+  for (const row of records) {
+    const text = Object.values(row).join(" ");
+    const ja = (text.match(jaRe) ?? []).length;
+    const en = (text.match(enRe) ?? []).length;
+    if (ja > en) jaQ++; else enQ++;
+  }
+  return jaQ >= enQ ? "ja" : "en";
+}
+
+// Parse "A. some text | B. other text" (or newline-separated) into Choice[]
 function parseChoices(raw: string): Choice[] {
-  // Split on " | " separator
-  const parts = raw.split(/\s*\|\s*/);
+  // Split on " | " or newline — supports both formats
+  const parts = raw.split(/\n|\s*\|\s*/).filter((p) => p.trim());
   const choices: Choice[] = [];
 
   for (const part of parts) {
@@ -47,17 +71,18 @@ export function getExamList(): ExamMeta[] {
 
   for (const file of files) {
     const id = file.replace(".csv", "");
-    const isEn = id.endsWith("_en");
-    const baseName = isEn ? id.slice(0, -3) : id;
+    // Strip known _en suffix for display name lookup, but don't rely on it for language
+    const baseName = id.endsWith("_en") ? id.slice(0, -3) : id;
     const displayName = EXAM_NAMES[baseName] ?? baseName;
 
     try {
       const content = fs.readFileSync(path.join(CSV_DIR, file), "utf-8");
       const records = parse(content, { columns: true, skip_empty_lines: true });
+      const language = detectLanguage(records as Record<string, string>[]);
       metas.push({
         id,
         name: displayName,
-        language: isEn ? "en" : "ja",
+        language,
         questionCount: records.length,
       });
     } catch {

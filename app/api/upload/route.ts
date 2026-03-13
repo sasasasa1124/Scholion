@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parse } from "csv-parse/sync";
 import fs from "fs";
 import path from "path";
+import { detectLanguage } from "@/lib/csv";
 
 const CSV_DIR = path.join(process.cwd(), "..");
 
@@ -42,12 +43,12 @@ export async function POST(req: NextRequest) {
   fs.writeFileSync(destPath, text, "utf-8");
 
   const examId = name.replace(".csv", "");
-  const isEn = examId.endsWith("_en");
+  const language = detectLanguage(records);
   return NextResponse.json({
     exam: {
       id: examId,
       name: examId.replace(/_en$/, "").replace(/_/g, " "),
-      language: isEn ? "en" : "ja",
+      language,
       questionCount: records.length,
     }
   });

@@ -1,14 +1,31 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { Download, Upload } from "lucide-react";
 import type { ExamMeta, QuizStats } from "@/lib/types";
 import ExamCard from "./ExamCard";
+
+const CSV_TEMPLATE = `重複,#,質問,選択肢,解答,解説,ソース
+,1,問題文をここに記載,A. 選択肢A | B. 選択肢B | C. 選択肢C | D. 選択肢D,A,解説をここに記載,出典URL
+,2,複数選択の例,A. 選択肢A | B. 選択肢B | C. 選択肢C | D. 選択肢D | E. 選択肢E,"A,C",解説をここに記載,出典URL
+`;
+
+function downloadTemplate() {
+  const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "quiz_template.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface Props {
   exams: ExamMeta[];
 }
 
 type Mode = "quiz" | "review";
+type UploadStatus = "idle" | "uploading" | "done" | "error";
 
 function loadAllStats(examId: string): QuizStats {
   try {
@@ -18,13 +35,25 @@ function loadAllStats(examId: string): QuizStats {
   }
 }
 
+async function uploadFile(file: File): Promise<ExamMeta> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  if (!res.ok) throw new Error(await res.text());
+  const { exam } = await res.json();
+  return exam as ExamMeta;
+}
+
 export default function HomeClient({ exams: initialExams }: Props) {
   const [mode, setMode] = useState<Mode>("quiz");
   const [langFilter, setLangFilter] = useState<"all" | "ja" | "en">("all");
   const [statsMap, setStatsMap] = useState<Record<string, { correct: number; answered: number; total: number }>>({});
-  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [exams, setExams] = useState<ExamMeta[]>(initialExams);
+  const [isDragging, setIsDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dragCountRef = useRef(0);
 
   useEffect(() => {
     const map: typeof statsMap = {};
@@ -40,35 +69,96 @@ export default function HomeClient({ exams: initialExams }: Props) {
     setStatsMap(map);
   }, [exams]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processFiles = useCallback(async (files: File[]) => {
+    const csvFiles = files.filter((f) => f.name.endsWith(".csv"));
+    if (csvFiles.length === 0) return;
+
     setUploadStatus("uploading");
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) throw new Error(await res.text());
-      const { exam } = await res.json();
-      setExams((prev) => {
-        const exists = prev.find((e) => e.id === exam.id);
-        return exists ? prev.map((e) => (e.id === exam.id ? exam : e)) : [...prev, exam];
-      });
-      setUploadStatus("done");
-      setTimeout(() => setUploadStatus("idle"), 2000);
-    } catch {
-      setUploadStatus("error");
-      setTimeout(() => setUploadStatus("idle"), 2000);
+    setUploadProgress({ done: 0, total: csvFiles.length });
+
+    let hasError = false;
+    for (let i = 0; i < csvFiles.length; i++) {
+      try {
+        const exam = await uploadFile(csvFiles[i]);
+        setExams((prev) => {
+          const exists = prev.find((e) => e.id === exam.id);
+          return exists ? prev.map((e) => (e.id === exam.id ? exam : e)) : [...prev, exam];
+        });
+      } catch {
+        hasError = true;
+      }
+      setUploadProgress({ done: i + 1, total: csvFiles.length });
     }
+
+    setUploadStatus(hasError ? "error" : "done");
+    setUploadProgress(null);
+    setTimeout(() => setUploadStatus("idle"), 2000);
     if (fileRef.current) fileRef.current.value = "";
-  };
+  }, []);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    processFiles(files);
+  }, [processFiles]);
+
+  // Global drag & drop
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      dragCountRef.current++;
+      setIsDragging(true);
+    };
+    const onDragLeave = () => {
+      dragCountRef.current--;
+      if (dragCountRef.current === 0) setIsDragging(false);
+    };
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCountRef.current = 0;
+      setIsDragging(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      processFiles(files);
+    };
+
+    document.addEventListener("dragenter", onDragEnter);
+    document.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragenter", onDragEnter);
+      document.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("drop", onDrop);
+    };
+  }, [processFiles]);
 
   const filtered = exams.filter((e) => langFilter === "all" || e.language === langFilter);
   const jaExams = filtered.filter((e) => e.language === "ja");
   const enExams = filtered.filter((e) => e.language === "en");
 
+  const uploadLabel =
+    uploadStatus === "uploading"
+      ? uploadProgress && uploadProgress.total > 1
+        ? `${uploadProgress.done}/${uploadProgress.total} 件...`
+        : "アップロード中..."
+      : uploadStatus === "done" ? "✓ 完了"
+      : uploadStatus === "error" ? "✗ エラー"
+      : "+ CSV追加";
+
   return (
-    <div>
+    <div className="relative">
+      {/* Drag & drop overlay */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-blue-500/10 backdrop-blur-[1px] pointer-events-none">
+          <div className="flex flex-col items-center gap-3 bg-white border-2 border-dashed border-blue-400 rounded-2xl px-10 py-8 shadow-xl">
+            <Upload size={32} className="text-blue-500" strokeWidth={1.5} />
+            <p className="text-sm font-semibold text-blue-700">CSVをドロップして追加</p>
+            <p className="text-xs text-blue-400">複数ファイル対応</p>
+          </div>
+        </div>
+      )}
+
       {/* Mode toggle — topmost choice */}
       <div className="mb-6">
         <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2">モード</p>
@@ -120,13 +210,22 @@ export default function HomeClient({ exams: initialExams }: Props) {
             </button>
           ))}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={downloadTemplate}
+            title="CSVテンプレートをダウンロード"
+            className="text-xs px-3 py-1.5 rounded-full border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1.5"
+          >
+            <Download size={11} />
+            テンプレート
+          </button>
           <input
             ref={fileRef}
             type="file"
             accept=".csv"
+            multiple
             className="hidden"
-            onChange={handleUpload}
+            onChange={handleInputChange}
           />
           <button
             onClick={() => fileRef.current?.click()}
@@ -139,10 +238,7 @@ export default function HomeClient({ exams: initialExams }: Props) {
                 : "border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600"
             }`}
           >
-            {uploadStatus === "uploading" ? "⟳ アップロード中..." :
-             uploadStatus === "done" ? "✓ 完了" :
-             uploadStatus === "error" ? "✗ エラー" :
-             "+ CSV追加"}
+            {uploadLabel}
           </button>
         </div>
       </div>
