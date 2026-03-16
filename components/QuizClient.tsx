@@ -61,8 +61,8 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     setStats(local);
 
     fetch(`/api/scores?examId=${encodeURIComponent(examId)}`)
-      .then((r) => r.json())
-      .then((db: QuizStats) => {
+      .then((r) => r.json() as Promise<QuizStats>)
+      .then((db) => {
         setStats((prev) => {
           const merged = { ...prev, ...db };
           saveLocalStats(examId, merged);
@@ -197,8 +197,8 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
       const num = parseInt(e.key);
       if (!isNaN(num) && num >= 1 && num <= labels.length) { handleToggle(labels[num - 1]); return; }
       if (e.key === "Enter")      { submitted ? goNext() : handleSubmit(); }
-      if (e.key === "ArrowRight" && submitted) goNext();
-      if (e.key === "ArrowLeft"  && submitted) goPrev();
+      if (e.key === "ArrowRight") goNext();
+      if (e.key === "ArrowLeft")  goPrev();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

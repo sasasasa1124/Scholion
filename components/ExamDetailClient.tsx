@@ -34,8 +34,8 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats }: 
   // Refresh category stats from API when page loads (picks up any in-flight score updates)
   useEffect(() => {
     fetch(`/api/category-stats?examId=${encodeURIComponent(exam.id)}`)
-      .then((r) => r.json())
-      .then((data: CategoryStat[]) => {
+      .then((r) => r.json() as Promise<CategoryStat[]>)
+      .then((data) => {
         if (Array.isArray(data) && data.length > 0) setStats(data);
       })
       .catch(() => {});

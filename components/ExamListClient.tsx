@@ -43,8 +43,8 @@ async function uploadFile(file: File): Promise<ExamMeta> {
   formData.append("file", file);
   const res = await fetch("/api/upload", { method: "POST", body: formData });
   if (!res.ok) throw new Error(await res.text());
-  const { exam } = await res.json();
-  return exam as ExamMeta;
+  const { exam } = await res.json() as { exam: ExamMeta };
+  return exam;
 }
 
 export default function ExamListClient({ exams: initialExams }: Props) {
