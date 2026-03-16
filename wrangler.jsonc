@@ -8,8 +8,7 @@
     {
       "binding": "DB",
       "database_name": "quiz-db",
-      // Replace with your actual database_id after running: wrangler d1 create quiz-db
-      "database_id": "YOUR_DATABASE_ID_HERE"
+      "database_id": "3a145dcc-b94d-49b3-8a9e-9873064cfcfd"
     }
   ]
 }

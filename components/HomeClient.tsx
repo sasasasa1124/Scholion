@@ -5,9 +5,9 @@ import { Download, Upload } from "lucide-react";
 import type { ExamMeta, QuizStats } from "@/lib/types";
 import ExamCard from "./ExamCard";
 
-const CSV_TEMPLATE = `重複,#,質問,選択肢,解答,解説,ソース
-,1,問題文をここに記載,A. 選択肢A | B. 選択肢B | C. 選択肢C | D. 選択肢D,A,解説をここに記載,出典URL
-,2,複数選択の例,A. 選択肢A | B. 選択肢B | C. 選択肢C | D. 選択肢D | E. 選択肢E,"A,C",解説をここに記載,出典URL
+const CSV_TEMPLATE = `duplicate,#,question,choices,answer,explanation,source
+,1,Enter question text here,A. Choice A | B. Choice B | C. Choice C | D. Choice D,A,Enter explanation here,Source URL
+,2,Multiple answer example,A. Choice A | B. Choice B | C. Choice C | D. Choice D | E. Choice E,"A,C",Enter explanation here,Source URL
 `;
 
 function downloadTemplate() {
@@ -46,7 +46,6 @@ async function uploadFile(file: File): Promise<ExamMeta> {
 
 export default function HomeClient({ exams: initialExams }: Props) {
   const [mode, setMode] = useState<Mode>("quiz");
-  const [langFilter, setLangFilter] = useState<"all" | "ja" | "en">("all");
   const [statsMap, setStatsMap] = useState<Record<string, { correct: number; answered: number; total: number }>>({});
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
@@ -133,9 +132,6 @@ export default function HomeClient({ exams: initialExams }: Props) {
     };
   }, [processFiles]);
 
-  const filtered = exams.filter((e) => langFilter === "all" || e.language === langFilter);
-  const jaExams = filtered.filter((e) => e.language === "ja");
-  const enExams = filtered.filter((e) => e.language === "en");
 
   const uploadLabel =
     uploadStatus === "uploading"
@@ -193,23 +189,8 @@ export default function HomeClient({ exams: initialExams }: Props) {
         </p>
       </div>
 
-      {/* Upload + Lang filter row */}
+      {/* Upload row */}
       <div className="flex items-center gap-2 mb-5">
-        <div className="flex gap-1.5">
-          {(["all", "ja", "en"] as const).map((l) => (
-            <button
-              key={l}
-              onClick={() => setLangFilter(l)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                langFilter === l
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "border-gray-300 text-gray-600 hover:border-gray-400"
-              }`}
-            >
-              {l === "all" ? "すべて" : l === "ja" ? "日本語" : "English"}
-            </button>
-          ))}
-        </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button
             onClick={downloadTemplate}
@@ -243,27 +224,12 @@ export default function HomeClient({ exams: initialExams }: Props) {
         </div>
       </div>
 
-      {/* Exam lists */}
-      {jaExams.length > 0 && (
-        <section className="mb-6">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">日本語</h2>
-          <div className="grid gap-3">
-            {jaExams.map((exam) => (
-              <ExamCard key={exam.id} exam={exam} stats={statsMap[exam.id]} mode={mode} />
-            ))}
-          </div>
-        </section>
-      )}
-      {enExams.length > 0 && (
-        <section>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">English</h2>
-          <div className="grid gap-3">
-            {enExams.map((exam) => (
-              <ExamCard key={exam.id} exam={exam} stats={statsMap[exam.id]} mode={mode} />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Exam list */}
+      <div className="grid gap-3">
+        {exams.map((exam) => (
+          <ExamCard key={exam.id} exam={exam} stats={statsMap[exam.id]} mode={mode} />
+        ))}
+      </div>
     </div>
   );
 }

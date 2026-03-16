@@ -24,11 +24,6 @@ export default function ExamCard({ exam, stats, mode }: Props) {
     <div className="border border-gray-200 rounded-xl p-4 bg-white">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
-          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mb-1.5 ${
-            exam.language === "ja" ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"
-          }`}>
-            {exam.language === "ja" ? "日本語" : "English"}
-          </span>
           <h2 className="font-semibold text-gray-900 text-sm leading-snug">{exam.name}</h2>
           <p className="text-xs text-gray-400 mt-0.5">{exam.questionCount} 問</p>
         </div>

@@ -18,6 +18,7 @@ interface Props {
   examName: string;
   mode: "quiz" | "review";
   userEmail: string;
+  activeCategory: string | null;
 }
 
 const statsKey = (id: string) => `quiz-stats-${id}`;
@@ -38,7 +39,7 @@ function saveLocalStats(examId: string, stats: QuizStats) {
   localStorage.setItem(statsKey(examId), JSON.stringify(stats));
 }
 
-export default function QuizClient({ questions: initialQuestions, examId, examName, mode, userEmail }: Props) {
+export default function QuizClient({ questions: initialQuestions, examId, examName, mode, userEmail, activeCategory }: Props) {
   const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -52,7 +53,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [revealed, setRevealed] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
-  const backHref = `/select/${mode}`;
+  const backHref = `/exam/${examId}`;
 
   // Load local stats then merge with DB stats (DB wins)
   useEffect(() => {
@@ -243,6 +244,12 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
             <ModeIcon size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">{examName}</span>
+            {activeCategory && (
+              <>
+                <span className="text-gray-200 shrink-0">·</span>
+                <span className="truncate text-blue-500 font-medium">{activeCategory}</span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">

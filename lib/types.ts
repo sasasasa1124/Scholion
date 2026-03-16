@@ -15,6 +15,7 @@ export interface Question {
   choiceCount: number; // metadata for validation
   isMultiple: boolean; // true if answers.length > 1
   version: number;
+  category: string | null;
 }
 
 export interface ExamMeta {
@@ -22,6 +23,13 @@ export interface ExamMeta {
   name: string;         // display name
   language: "ja" | "en";
   questionCount: number;
+}
+
+export interface CategoryStat {
+  category: string | null;
+  total: number;
+  attempted: number;
+  correct: number;
 }
 
 export interface QuestionHistoryEntry {

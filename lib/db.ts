@@ -1,4 +1,4 @@
-import type { Choice, ExamMeta, Question, QuestionHistoryEntry, QuizStats } from "./types";
+import type { CategoryStat, Choice, ExamMeta, Question, QuestionHistoryEntry, QuizStats } from "./types";
 
 // Minimal D1 type stub – replaced by @cloudflare/workers-types after npm install
 interface D1PreparedStatement {
@@ -69,14 +69,14 @@ export async function getQuestions(examId: string): Promise<Question[]> {
 
   const result = await db
     .prepare(
-      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version
+      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version, category
        FROM questions WHERE exam_id = ? ORDER BY num ASC`
     )
     .bind(examId)
     .all<{
       id: string; num: number; question_text: string; options: string;
       answers: string; explanation: string; source: string;
-      is_duplicate: number; version: number;
+      is_duplicate: number; version: number; category: string | null;
     }>();
 
   return (result.results ?? []).map((row) => {
@@ -94,6 +94,7 @@ export async function getQuestions(examId: string): Promise<Question[]> {
       choiceCount: choices.length,
       isMultiple: answers.length > 1,
       version: row.version,
+      category: row.category ?? null,
     };
   });
 }
@@ -104,14 +105,14 @@ export async function getQuestionById(id: string): Promise<Question | null> {
 
   const row = await db
     .prepare(
-      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version
+      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version, category
        FROM questions WHERE id = ?`
     )
     .bind(id)
     .first<{
       id: string; num: number; question_text: string; options: string;
       answers: string; explanation: string; source: string;
-      is_duplicate: number; version: number;
+      is_duplicate: number; version: number; category: string | null;
     }>();
 
   if (!row) return null;
@@ -129,6 +130,7 @@ export async function getQuestionById(id: string): Promise<Question | null> {
     choiceCount: choices.length,
     isMultiple: answers.length > 1,
     version: row.version,
+    category: row.category ?? null,
   };
 }
 
@@ -230,6 +232,39 @@ export async function getScores(userEmail: string, examId: string): Promise<Quiz
     stats[num] = row.last_correct as 0 | 1;
   }
   return stats;
+}
+
+// ── Category stats ───────────────────────────────────────────────────────────
+
+export async function getCategoryStats(
+  userEmail: string,
+  examId: string
+): Promise<CategoryStat[]> {
+  const db = getDB();
+  if (!db) return [];
+
+  const result = await db
+    .prepare(
+      `SELECT
+         q.category,
+         COUNT(q.id) AS total,
+         COUNT(s.question_id) AS attempted,
+         COALESCE(SUM(s.last_correct), 0) AS correct_count
+       FROM questions q
+       LEFT JOIN scores s ON s.question_id = q.id AND s.user_email = ?
+       WHERE q.exam_id = ?
+       GROUP BY q.category
+       ORDER BY q.category`
+    )
+    .bind(userEmail, examId)
+    .all<{ category: string | null; total: number; attempted: number; correct_count: number }>();
+
+  return (result.results ?? []).map((row) => ({
+    category: row.category,
+    total: row.total,
+    attempted: row.attempted,
+    correct: row.correct_count,
+  }));
 }
 
 export async function saveScore(

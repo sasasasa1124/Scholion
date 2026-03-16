@@ -9,10 +9,12 @@ import QuestionEditModal from "./QuestionEditModal";
 interface Props {
   questions: Question[];
   examName: string;
+  examId: string;
   userEmail: string;
+  activeCategory?: string | null;
 }
 
-export default function AnswersClient({ questions: initialQuestions, examName, userEmail: _userEmail }: Props) {
+export default function AnswersClient({ questions: initialQuestions, examName, examId, userEmail: _userEmail }: Props) {
   const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -43,7 +45,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, u
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <Link href="/select/answers" className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0">
+          <Link href={`/exam/${encodeURIComponent(examId)}`} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0">
             <ArrowLeft size={14} /> 戻る
           </Link>
           <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
