@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import type { Choice, ExamMeta, Question } from "./types";
 
-const CSV_DIR = path.join(process.cwd(), "..");
+function getCSVDir(): string { return path.join(process.cwd(), ".."); }
 
 const EXAM_NAMES: Record<string, string> = {
   experience_cloud_consultant_exam: "Experience Cloud Consultant",
@@ -62,7 +62,7 @@ function parseAnswers(raw: string): string[] {
 }
 
 export function getExamList(): ExamMeta[] {
-  const files = fs.readdirSync(CSV_DIR).filter((f) => f.endsWith(".csv"));
+  const files = fs.readdirSync(getCSVDir()).filter((f) => f.endsWith(".csv"));
   const metas: ExamMeta[] = [];
 
   for (const file of files) {
@@ -72,7 +72,7 @@ export function getExamList(): ExamMeta[] {
     const displayName = EXAM_NAMES[baseName] ?? baseName;
 
     try {
-      const content = fs.readFileSync(path.join(CSV_DIR, file), "utf-8");
+      const content = fs.readFileSync(path.join(getCSVDir(), file), "utf-8");
       const records = parse(content, { columns: true, skip_empty_lines: true });
       const language = detectLanguage(records as Record<string, string>[]);
       metas.push({
@@ -94,7 +94,7 @@ export function getExamList(): ExamMeta[] {
 }
 
 export function getQuestions(examId: string): Question[] {
-  const filePath = path.join(CSV_DIR, `${examId}.csv`);
+  const filePath = path.join(getCSVDir(), `${examId}.csv`);
   if (!fs.existsSync(filePath)) return [];
 
   const content = fs.readFileSync(filePath, "utf-8");
