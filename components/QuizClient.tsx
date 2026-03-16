@@ -5,22 +5,24 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
 import QuizQuestion from "./QuizQuestion";
 import ReviewReveal from "./ReviewReveal";
+import QuestionEditModal from "./QuestionEditModal";
 
 interface Props {
   questions: Question[];
   examId: string;
   examName: string;
   mode: "quiz" | "review";
+  userEmail: string;
 }
 
 const statsKey = (id: string) => `quiz-stats-${id}`;
 
-function loadStats(examId: string): QuizStats {
+function loadLocalStats(examId: string): QuizStats {
   if (typeof window === "undefined") return {};
   try {
     const raw = JSON.parse(localStorage.getItem(statsKey(examId)) ?? "{}");
@@ -32,12 +34,13 @@ function loadStats(examId: string): QuizStats {
   } catch { return {}; }
 }
 
-function saveStats(examId: string, stats: QuizStats) {
+function saveLocalStats(examId: string, stats: QuizStats) {
   localStorage.setItem(statsKey(examId), JSON.stringify(stats));
 }
 
-export default function QuizClient({ questions, examId, examName, mode }: Props) {
+export default function QuizClient({ questions: initialQuestions, examId, examName, mode, userEmail }: Props) {
   const router = useRouter();
+  const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState<QuizStats>({});
   const [filter, setFilter] = useState<"all" | "wrong">("all");
@@ -46,11 +49,27 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [streak, setStreak] = useState(0);
-  const [revealed, setRevealed] = useState(false); // review: true after 知らなかった
+  const [revealed, setRevealed] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
   const backHref = `/select/${mode}`;
 
-  useEffect(() => { setStats(loadStats(examId)); }, [examId]);
+  // Load local stats then merge with DB stats (DB wins)
+  useEffect(() => {
+    const local = loadLocalStats(examId);
+    setStats(local);
+
+    fetch(`/api/scores?examId=${encodeURIComponent(examId)}`)
+      .then((r) => r.json())
+      .then((db: QuizStats) => {
+        setStats((prev) => {
+          const merged = { ...prev, ...db };
+          saveLocalStats(examId, merged);
+          return merged;
+        });
+      })
+      .catch(() => {}); // silently fail – local stats still work
+  }, [examId]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -72,9 +91,15 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
   const recordAnswer = useCallback((questionId: number, correct: boolean) => {
     setStats((prev) => {
       const next = { ...prev, [String(questionId)]: correct ? 1 : 0 } as QuizStats;
-      saveStats(examId, next);
+      saveLocalStats(examId, next);
       return next;
     });
+    // Fire-and-forget sync to DB
+    fetch("/api/scores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ examId, questionId, correct }),
+    }).catch(() => {});
   }, [examId]);
 
   const handleToggle = useCallback((label: string) => {
@@ -132,7 +157,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     if (!q) return;
     recordAnswer(q.id, false);
     setStreak(0);
-    setRevealed(true); // show answer
+    setRevealed(true);
   }, [filteredQuestions, currentIndex, recordAnswer]);
 
   const handleRevealNext = useCallback(() => {
@@ -143,6 +168,10 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     }
   }, [currentIndex, filteredQuestions.length, goNext, router, backHref]);
 
+  const handleQuestionSave = useCallback((updated: Question) => {
+    setQuestions((prev) => prev.map((q) => (q.dbId === updated.dbId ? updated : q)));
+  }, []);
+
   // Keyboard
   useEffect(() => {
     const q = filteredQuestions[currentIndex];
@@ -150,7 +179,8 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     const labels = q.choices.map((c) => c.label);
 
     const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (editingQuestion) return;
 
       if (mode === "review") {
         if (!revealed) {
@@ -171,7 +201,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filteredQuestions, currentIndex, submitted, revealed, mode, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
+  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
 
   const ModeIcon = mode === "quiz" ? Brain : BookOpen;
   const isLast = currentIndex === filteredQuestions.length - 1;
@@ -242,7 +272,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-        {/* Left panel: question + choices + action */}
+        {/* Left panel */}
         <div className={`
           min-h-0 flex-1 flex flex-col overflow-hidden
           border-b lg:border-b-0 lg:border-r border-gray-200
@@ -253,16 +283,22 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
             : isCorrect === false ? "bg-rose-50"
             : "bg-white"}
         `}>
-          {/* Position indicator */}
-          <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3">
+          {/* Position indicator + edit button */}
+          <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 flex items-center justify-between">
             <span className="text-xs tabular-nums text-gray-400">問 {currentIndex + 1} / {filteredQuestions.length}</span>
+            <button
+              onClick={() => setEditingQuestion(q)}
+              className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
+              title="問題を編集"
+            >
+              <Pencil size={12} /> 編集
+            </button>
           </div>
 
           {mode === "review"
             ? revealed
               ? <ReviewReveal question={q} onNext={handleRevealNext} isLast={isLast} />
               : <>
-                  {/* Question (display only) */}
                   <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                     <div className="bg-gray-50 rounded-xl px-5 py-4 mb-4">
                       <div
@@ -281,7 +317,6 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                       ))}
                     </div>
                   </div>
-                  {/* Rating buttons */}
                   <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100">
                     <div className="flex gap-2">
                       <button onClick={handleDontKnow} className="flex-1 h-10 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
@@ -294,7 +329,6 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                   </div>
                 </>
             : <>
-                {/* Quiz: question + choices */}
                 <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                   <QuizQuestion
                     question={q}
@@ -304,7 +338,6 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
                     stat={stats[String(q.id)]}
                   />
                 </div>
-                {/* Quiz: action area */}
                 <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100">
                   {!submitted && (
                     <button
@@ -339,7 +372,7 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           }
         </div>
 
-        {/* Right panel: shown only when wrong (quiz) or always (review) */}
+        {/* Right panel: explanation (quiz wrong answer) */}
         <div className={`
           flex flex-col overflow-hidden bg-white
           ${!showRightPanel
@@ -347,15 +380,12 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
             : "shrink-0 w-full lg:w-[420px] border-t lg:border-t-0 lg:border-l border-gray-200 h-[40vh] lg:h-auto"
           }
         `}>
-          {/* Header */}
           <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <XCircle size={15} className="text-rose-400 shrink-0" />
               <span className="text-xs text-gray-500">解説</span>
             </div>
           </div>
-
-          {/* Explanation */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4">
             {q.explanation ? (
               <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{q.explanation}</p>
@@ -364,13 +394,11 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
             )}
             {q.source && <p className="text-xs text-gray-300 mt-4">出典: {q.source}</p>}
           </div>
-
         </div>
       </div>
 
-      {/* ── Footer: question map + slider ── */}
+      {/* ── Footer ── */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 pt-3 pb-2.5">
-        {/* Question status segments */}
         <div className="flex items-end gap-px mb-2.5">
           {filteredQuestions.map((fq, i) => {
             const s = stats[String(fq.id)];
@@ -392,8 +420,6 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
             );
           })}
         </div>
-
-        {/* Slider row */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-300 tabular-nums w-4 text-right shrink-0">1</span>
           <input
@@ -413,6 +439,15 @@ export default function QuizClient({ questions, examId, examName, mode }: Props)
           </span>
         </div>
       </footer>
+
+      {/* Edit modal */}
+      {editingQuestion && (
+        <QuestionEditModal
+          question={editingQuestion}
+          onClose={() => setEditingQuestion(null)}
+          onSave={handleQuestionSave}
+        />
+      )}
     </div>
   );
 }

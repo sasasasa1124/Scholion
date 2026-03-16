@@ -1,26 +1,35 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpenCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, BookOpenCheck, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import type { Question } from "@/lib/types";
+import QuestionEditModal from "./QuestionEditModal";
 
 interface Props {
   questions: Question[];
   examName: string;
+  userEmail: string;
 }
 
-export default function AnswersClient({ questions, examName }: Props) {
+export default function AnswersClient({ questions: initialQuestions, examName, userEmail: _userEmail }: Props) {
+  const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+
+  const handleQuestionSave = useCallback((updated: Question) => {
+    setQuestions((prev) => prev.map((q) => (q.dbId === updated.dbId ? updated : q)));
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (editingQuestion) return;
       if (e.key === "ArrowRight" || e.key === "Enter") setCurrentIndex((i) => Math.min(i + 1, questions.length - 1));
       else if (e.key === "ArrowLeft" || e.key === "Backspace") setCurrentIndex((i) => Math.max(i - 1, 0));
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [questions.length]);
+  }, [questions.length, editingQuestion]);
 
   const q = questions[currentIndex];
   const isFirst = currentIndex === 0;
@@ -42,9 +51,18 @@ export default function AnswersClient({ questions, examName }: Props) {
             <span className="truncate">{examName}</span>
           </div>
         </div>
-        <span className="text-xs tabular-nums text-gray-400 shrink-0">
-          {currentIndex + 1} / {questions.length}
-        </span>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => setEditingQuestion(q)}
+            className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
+            title="問題を編集"
+          >
+            <Pencil size={12} /> 編集
+          </button>
+          <span className="text-xs tabular-nums text-gray-400">
+            {currentIndex + 1} / {questions.length}
+          </span>
+        </div>
       </header>
 
       {/* Main */}
@@ -55,6 +73,7 @@ export default function AnswersClient({ questions, examName }: Props) {
             <p className="text-[11px] text-gray-400 mb-2">
               問 {currentIndex + 1}
               {q.isMultiple && <span className="ml-2 text-violet-500 font-semibold">複数選択</span>}
+              <span className="ml-2 text-gray-300">v{q.version}</span>
             </p>
             <div
               className="text-sm leading-relaxed text-gray-900 font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
@@ -103,7 +122,6 @@ export default function AnswersClient({ questions, examName }: Props) {
 
       {/* Footer */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 pt-3 pb-2.5">
-        {/* Question map */}
         <div className="flex items-end gap-px mb-2.5">
           {questions.map((_, i) => (
             <button
@@ -115,8 +133,6 @@ export default function AnswersClient({ questions, examName }: Props) {
             />
           ))}
         </div>
-
-        {/* Slider + nav */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
@@ -144,6 +160,15 @@ export default function AnswersClient({ questions, examName }: Props) {
           <span className="text-xs text-gray-300 ml-1 shrink-0 hidden lg:block">Enter 次へ  ⌫ 前へ</span>
         </div>
       </footer>
+
+      {/* Edit modal */}
+      {editingQuestion && (
+        <QuestionEditModal
+          question={editingQuestion}
+          onClose={() => setEditingQuestion(null)}
+          onSave={handleQuestionSave}
+        />
+      )}
     </div>
   );
 }

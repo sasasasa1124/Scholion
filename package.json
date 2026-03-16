@@ -5,7 +5,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "build:cf": "npx @cloudflare/next-on-pages",
+    "preview": "npm run build:cf && wrangler pages dev",
+    "start": "next start",
+    "cf:setup": "wrangler d1 create quiz-db",
+    "db:migrate": "wrangler d1 execute quiz-db --file=migrations/0001_init.sql",
+    "db:migrate:local": "wrangler d1 execute quiz-db --local --file=migrations/0001_init.sql",
+    "db:seed": "npx tsx scripts/seed-d1.ts",
+    "db:seed:local": "npx tsx scripts/seed-d1.ts --local"
   },
   "dependencies": {
     "csv-parse": "^6.1.0",
@@ -15,11 +22,15 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1",
+    "@cloudflare/workers-types": "^4",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4",
+    "typescript": "^5",
+    "wrangler": "^3"
   }
 }

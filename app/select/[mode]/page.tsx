@@ -1,4 +1,4 @@
-import { getExamList } from "@/lib/csv";
+import { getExamList } from "@/lib/db";
 import { notFound } from "next/navigation";
 import ExamSelectClient from "@/components/ExamSelectClient";
 
@@ -12,7 +12,7 @@ export default async function ExamSelectPage({ params }: Props) {
   const { mode } = await params;
   if (mode !== "quiz" && mode !== "review" && mode !== "answers") notFound();
 
-  const exams = getExamList();
+  const exams = await getExamList();
 
   return (
     <ExamSelectClient

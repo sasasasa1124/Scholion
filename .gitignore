@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cloudflare / Wrangler
+.wrangler/
+scripts/_seed.sql

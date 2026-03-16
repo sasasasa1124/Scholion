@@ -1,4 +1,5 @@
-import { getQuestions, getExamList } from "@/lib/csv";
+import { getQuestions, getExamList } from "@/lib/db";
+import { getUserEmail } from "@/lib/user";
 import QuizClient from "@/components/QuizClient";
 import AnswersClient from "@/components/AnswersClient";
 import { notFound } from "next/navigation";
@@ -14,14 +15,15 @@ export default async function ExamPage({ params }: Props) {
   if (mode !== "quiz" && mode !== "review" && mode !== "answers") notFound();
 
   const examId = decodeURIComponent(exam);
-  const exams = getExamList();
+  const exams = await getExamList();
   const meta = exams.find((e) => e.id === examId);
   if (!meta) notFound();
 
-  const questions = getQuestions(examId);
+  const questions = await getQuestions(examId);
+  const userEmail = await getUserEmail();
 
   if (mode === "answers") {
-    return <AnswersClient questions={questions} examName={meta.name} />;
+    return <AnswersClient questions={questions} examName={meta.name} userEmail={userEmail} />;
   }
 
   return (
@@ -30,6 +32,7 @@ export default async function ExamPage({ params }: Props) {
       examId={examId}
       examName={meta.name}
       mode={mode as "quiz" | "review"}
+      userEmail={userEmail}
     />
   );
 }

@@ -5,6 +5,7 @@ export interface Choice {
 
 export interface Question {
   id: number;
+  dbId: string;      // "{examId}__{num}" – used for API calls
   question: string;
   choices: Choice[];
   answers: string[]; // ["A", "C", "E"]
@@ -13,16 +14,29 @@ export interface Question {
   isDuplicate: boolean;
   choiceCount: number; // metadata for validation
   isMultiple: boolean; // true if answers.length > 1
+  version: number;
 }
 
 export interface ExamMeta {
-  id: string;           // file name without .csv
+  id: string;           // exam id
   name: string;         // display name
   language: "ja" | "en";
   questionCount: number;
 }
 
+export interface QuestionHistoryEntry {
+  id: number;
+  questionId: string;
+  questionText: string;
+  options: Choice[];
+  answers: string[];
+  explanation: string;
+  version: number;
+  changedAt: string;
+  changedBy: string | null;
+}
+
 // 0 = last answer wrong, 1 = last answer correct, undefined = never answered
 export type QuizStat = 0 | 1;
 
-export type QuizStats = Record<string, QuizStat>; // key: questionId
+export type QuizStats = Record<string, QuizStat>; // key: String(question.id)
