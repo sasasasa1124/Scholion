@@ -101,10 +101,12 @@ export function getQuestions(examId: string): Question[] {
   const records = parse(content, { columns: true, skip_empty_lines: true }) as Record<string, string>[];
 
   return records.map((row): Question => {
+    const num = parseInt(row["#"] ?? "0", 10);
     const choices = parseChoices(row["選択肢"] ?? row["choices"] ?? "");
     const answers = parseAnswers(row["解答"] ?? row["answer"] ?? row["answers"] ?? "");
     return {
-      id: parseInt(row["#"] ?? "0", 10),
+      id: num,
+      dbId: `${examId}__${num}`,
       question: row["質問"] ?? row["question"] ?? "",
       choices,
       answers,
@@ -113,6 +115,7 @@ export function getQuestions(examId: string): Question[] {
       isDuplicate: !!(row["重複"] ?? row["duplicate"] ?? "").trim(),
       choiceCount: choices.length,
       isMultiple: answers.length > 1,
+      version: 1,
     };
   });
 }

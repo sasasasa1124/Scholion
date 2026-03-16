@@ -1,18 +1,48 @@
-import { getRequestContext } from "@cloudflare/next-on-pages";
 import type { Choice, ExamMeta, Question, QuestionHistoryEntry, QuizStats } from "./types";
 
-interface Env {
-  DB: D1Database;
+// Minimal D1 type stub – replaced by @cloudflare/workers-types after npm install
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  all<T = unknown>(): Promise<{ results: T[] }>;
+  first<T = unknown>(): Promise<T | null>;
+  run(): Promise<void>;
+}
+interface D1Database {
+  prepare(query: string): D1PreparedStatement;
 }
 
-function getDB(): D1Database {
-  return getRequestContext<Env>().env.DB;
+// ── Runtime detection ─────────────────────────────────────────────────────
+
+function getDB(): D1Database | null {
+  try {
+    // Dynamic require so the module is optional at build/dev time
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+    const { getRequestContext } = require("@cloudflare/next-on-pages") as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getRequestContext() as any).env.DB as D1Database;
+  } catch {
+    return null;
+  }
+}
+
+// ── CSV fallback (local dev only) ─────────────────────────────────────────
+
+async function csvExamList(): Promise<ExamMeta[]> {
+  const { getExamList } = await import("./csv");
+  return getExamList();
+}
+
+async function csvQuestions(examId: string): Promise<Question[]> {
+  const { getQuestions } = await import("./csv");
+  return getQuestions(examId); // csv.ts now includes dbId and version
 }
 
 // ── Exam list ──────────────────────────────────────────────────────────────
 
 export async function getExamList(): Promise<ExamMeta[]> {
   const db = getDB();
+  if (!db) return csvExamList();
+
   const result = await db
     .prepare(
       `SELECT e.id, e.name, e.lang, COUNT(q.id) AS question_count
@@ -35,24 +65,18 @@ export async function getExamList(): Promise<ExamMeta[]> {
 
 export async function getQuestions(examId: string): Promise<Question[]> {
   const db = getDB();
+  if (!db) return csvQuestions(examId);
+
   const result = await db
     .prepare(
       `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version
-       FROM questions
-       WHERE exam_id = ?
-       ORDER BY num ASC`
+       FROM questions WHERE exam_id = ? ORDER BY num ASC`
     )
     .bind(examId)
     .all<{
-      id: string;
-      num: number;
-      question_text: string;
-      options: string;
-      answers: string;
-      explanation: string;
-      source: string;
-      is_duplicate: number;
-      version: number;
+      id: string; num: number; question_text: string; options: string;
+      answers: string; explanation: string; source: string;
+      is_duplicate: number; version: number;
     }>();
 
   return (result.results ?? []).map((row) => {
@@ -76,23 +100,18 @@ export async function getQuestions(examId: string): Promise<Question[]> {
 
 export async function getQuestionById(id: string): Promise<Question | null> {
   const db = getDB();
+  if (!db) return null;
+
   const row = await db
     .prepare(
-      `SELECT id, exam_id, num, question_text, options, answers, explanation, source, is_duplicate, version
+      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version
        FROM questions WHERE id = ?`
     )
     .bind(id)
     .first<{
-      id: string;
-      exam_id: string;
-      num: number;
-      question_text: string;
-      options: string;
-      answers: string;
-      explanation: string;
-      source: string;
-      is_duplicate: number;
-      version: number;
+      id: string; num: number; question_text: string; options: string;
+      answers: string; explanation: string; source: string;
+      is_duplicate: number; version: number;
     }>();
 
   if (!row) return null;
@@ -128,19 +147,16 @@ export async function updateQuestion(
   changedBy: string
 ): Promise<void> {
   const db = getDB();
+  if (!db) throw new Error("DB not available in local dev");
 
-  // Save current version to history first
   const current = await db
     .prepare(
       `SELECT question_text, options, answers, explanation, version FROM questions WHERE id = ?`
     )
     .bind(id)
     .first<{
-      question_text: string;
-      options: string;
-      answers: string;
-      explanation: string;
-      version: number;
+      question_text: string; options: string; answers: string;
+      explanation: string; version: number;
     }>();
 
   if (!current) throw new Error(`Question ${id} not found`);
@@ -150,18 +166,9 @@ export async function updateQuestion(
       `INSERT INTO question_history (question_id, question_text, options, answers, explanation, version, changed_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(
-      id,
-      current.question_text,
-      current.options,
-      current.answers,
-      current.explanation,
-      current.version,
-      changedBy
-    )
+    .bind(id, current.question_text, current.options, current.answers, current.explanation, current.version, changedBy)
     .run();
 
-  // Update question to new version
   await db
     .prepare(
       `UPDATE questions
@@ -169,36 +176,24 @@ export async function updateQuestion(
            version = version + 1, updated_at = datetime('now')
        WHERE id = ?`
     )
-    .bind(
-      data.question_text,
-      JSON.stringify(data.options),
-      JSON.stringify(data.answers),
-      data.explanation,
-      id
-    )
+    .bind(data.question_text, JSON.stringify(data.options), JSON.stringify(data.answers), data.explanation, id)
     .run();
 }
 
 export async function getQuestionHistory(questionId: string): Promise<QuestionHistoryEntry[]> {
   const db = getDB();
+  if (!db) return [];
+
   const result = await db
     .prepare(
       `SELECT id, question_id, question_text, options, answers, explanation, version, changed_at, changed_by
-       FROM question_history
-       WHERE question_id = ?
-       ORDER BY version DESC`
+       FROM question_history WHERE question_id = ? ORDER BY version DESC`
     )
     .bind(questionId)
     .all<{
-      id: number;
-      question_id: string;
-      question_text: string;
-      options: string;
-      answers: string;
-      explanation: string;
-      version: number;
-      changed_at: string;
-      changed_by: string | null;
+      id: number; question_id: string; question_text: string; options: string;
+      answers: string; explanation: string; version: number;
+      changed_at: string; changed_by: string | null;
     }>();
 
   return (result.results ?? []).map((row) => ({
@@ -214,10 +209,12 @@ export async function getQuestionHistory(questionId: string): Promise<QuestionHi
   }));
 }
 
-// ── Scores ──────────────────────────────────────────────────────────────────
+// ── Scores ─────────────────────────────────────────────────────────────────
 
 export async function getScores(userEmail: string, examId: string): Promise<QuizStats> {
   const db = getDB();
+  if (!db) return {};
+
   const prefix = `${examId}__`;
   const result = await db
     .prepare(
@@ -242,6 +239,8 @@ export async function saveScore(
   correct: boolean
 ): Promise<void> {
   const db = getDB();
+  if (!db) return; // no-op in local dev
+
   const questionId = `${examId}__${questionNum}`;
   const lastCorrect = correct ? 1 : 0;
   const correctDelta = correct ? 1 : 0;
