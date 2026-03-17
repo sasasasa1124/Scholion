@@ -455,32 +455,16 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             : isCorrect === false ? "bg-rose-50"
             : "bg-white"}
         `}>
-          {/* Position indicator + edit button */}
+          {/* Position indicator */}
           <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 flex items-center justify-between">
             <span className="text-xs tabular-nums text-gray-400">Q{currentIndex + 1}/{filteredQuestions.length}</span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleAiRefine}
-                className="flex items-center gap-1 text-xs text-gray-300 hover:text-amber-500 transition-colors"
-                title="AI Refine"
-              >
-                <Wand2 size={12} />
-              </button>
-              <button
-                onClick={() => setEditingQuestion(q)}
-                className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
-                title="Edit question"
-              >
-                <Pencil size={12} />
-              </button>
-              <button
-                onClick={() => setCreateMode(true)}
-                className="flex items-center gap-1 text-xs text-gray-300 hover:text-emerald-500 transition-colors"
-                title="New question"
-              >
-                <Plus size={12} />
-              </button>
-            </div>
+            <button
+              onClick={() => setCreateMode(true)}
+              className="p-1 text-gray-300 hover:text-emerald-500 transition-colors"
+              title="New question"
+            >
+              <Plus size={13} />
+            </button>
           </div>
 
           {mode === "review"
@@ -491,6 +475,14 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                     <div className="card-front">
                       <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                         <div className="max-w-3xl mx-auto w-full">
+                          <div className="flex justify-end gap-1 mb-1.5">
+                            <button onClick={handleAiRefine} className="p-1 text-gray-300 hover:text-amber-500 transition-colors" title="AI Refine">
+                              <Wand2 size={15} />
+                            </button>
+                            <button onClick={() => setEditingQuestion(q)} className="p-1 text-gray-300 hover:text-blue-500 transition-colors" title="Edit question">
+                              <Pencil size={15} />
+                            </button>
+                          </div>
                           <div className="bg-gray-50 rounded-xl px-5 py-4 lg:px-6 lg:py-5 mb-4">
                             <div
                               className="text-gray-900 text-sm lg:text-base leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
@@ -533,6 +525,14 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                   className={`flex-1 overflow-y-auto px-4 sm:px-8 pb-4 ${direction === "forward" ? "question-slide-forward" : "question-slide-backward"}`}
                 >
                   <div className="max-w-3xl mx-auto w-full h-full">
+                    <div className="flex justify-end gap-1 mb-1.5">
+                      <button onClick={handleAiRefine} className="p-1 text-gray-300 hover:text-amber-500 transition-colors" title="AI Refine">
+                        <Wand2 size={15} />
+                      </button>
+                      <button onClick={() => setEditingQuestion(q)} className="p-1 text-gray-300 hover:text-blue-500 transition-colors" title="Edit question">
+                        <Pencil size={15} />
+                      </button>
+                    </div>
                     <QuizQuestion
                       question={q}
                       selected={selected}
@@ -568,7 +568,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                             className="text-gray-300 hover:text-violet-500 transition-colors"
                             title="AI Explain"
                           >
-                            <Sparkles size={12} />
+                            <Sparkles size={15} />
                           </button>
                         </div>
                         <div className="flex gap-2">
@@ -606,7 +606,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                 className="text-gray-300 hover:text-violet-500 transition-colors"
                 title="AI Explain"
               >
-                <Sparkles size={12} />
+                <Sparkles size={15} />
               </button>
             </div>
           </div>
