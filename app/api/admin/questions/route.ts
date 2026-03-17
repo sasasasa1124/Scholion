@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
     answers: string[];
     explanation: string;
     source: string;
+    explanation_sources: string[];
   };
 
   if (!body.exam_id || !body.question_text || !body.options?.length || !body.answers?.length) {
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
     answers: body.answers,
     explanation: body.explanation ?? "",
     source: body.source ?? "",
+    explanation_sources: body.explanation_sources ?? [],
   }, userEmail);
 
   return NextResponse.json(created, { status: 201 });

@@ -76,15 +76,17 @@ export async function getQuestions(examId: string): Promise<Question[]> {
 
   const result = await db
     .prepare(
-      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version, category, created_by
+      `SELECT id, num, question_text, options, answers, explanation, source, explanation_sources,
+              is_duplicate, version, category, created_by, created_at, added_at
        FROM questions WHERE exam_id = ? ORDER BY num ASC`
     )
     .bind(examId)
     .all<{
       id: string; num: number; question_text: string; options: string;
       answers: string; explanation: string; source: string;
+      explanation_sources: string | null;
       is_duplicate: number; version: number; category: string | null;
-      created_by: string;
+      created_by: string; created_at: string | null; added_at: string | null;
     }>();
 
   return (result.results ?? []).map((row) => {
@@ -98,12 +100,15 @@ export async function getQuestions(examId: string): Promise<Question[]> {
       answers,
       explanation: row.explanation ?? "",
       source: row.source ?? "",
+      explanationSources: JSON.parse(row.explanation_sources ?? "[]") as string[],
       isDuplicate: row.is_duplicate === 1,
       choiceCount: choices.length,
       isMultiple: answers.length > 1,
       version: row.version,
       category: row.category ?? null,
       createdBy: row.created_by ?? "",
+      createdAt: row.created_at ?? "",
+      addedAt: row.added_at ?? "",
     };
   });
 }
@@ -114,15 +119,17 @@ export async function getQuestionById(id: string): Promise<Question | null> {
 
   const row = await db
     .prepare(
-      `SELECT id, num, question_text, options, answers, explanation, source, is_duplicate, version, category, created_by
+      `SELECT id, num, question_text, options, answers, explanation, source, explanation_sources,
+              is_duplicate, version, category, created_by, created_at, added_at
        FROM questions WHERE id = ?`
     )
     .bind(id)
     .first<{
       id: string; num: number; question_text: string; options: string;
       answers: string; explanation: string; source: string;
+      explanation_sources: string | null;
       is_duplicate: number; version: number; category: string | null;
-      created_by: string;
+      created_by: string; created_at: string | null; added_at: string | null;
     }>();
 
   if (!row) return null;
@@ -136,12 +143,15 @@ export async function getQuestionById(id: string): Promise<Question | null> {
     answers,
     explanation: row.explanation ?? "",
     source: row.source ?? "",
+    explanationSources: JSON.parse(row.explanation_sources ?? "[]") as string[],
     isDuplicate: row.is_duplicate === 1,
     choiceCount: choices.length,
     isMultiple: answers.length > 1,
     version: row.version,
     category: row.category ?? null,
     createdBy: row.created_by ?? "",
+    createdAt: row.created_at ?? "",
+    addedAt: row.added_at ?? "",
   };
 }
 
@@ -153,6 +163,7 @@ export interface QuestionUpdate {
   answers: string[];
   explanation: string;
   source: string;
+  explanation_sources: string[];
   change_reason: string;
 }
 
@@ -188,10 +199,14 @@ export async function updateQuestion(
     .prepare(
       `UPDATE questions
        SET question_text = ?, options = ?, answers = ?, explanation = ?, source = ?,
-           version = version + 1, updated_at = datetime('now')
+           explanation_sources = ?, version = version + 1, updated_at = datetime('now')
        WHERE id = ?`
     )
-    .bind(data.question_text, JSON.stringify(data.options), JSON.stringify(data.answers), data.explanation, data.source ?? "", id)
+    .bind(
+      data.question_text, JSON.stringify(data.options), JSON.stringify(data.answers),
+      data.explanation, data.source ?? "",
+      JSON.stringify(data.explanation_sources ?? []), id
+    )
     .run();
 }
 
@@ -289,6 +304,7 @@ export interface QuestionCreate {
   answers: string[];
   explanation: string;
   source: string;
+  explanation_sources: string[];
 }
 
 export async function createQuestion(
@@ -309,10 +325,15 @@ export async function createQuestion(
 
   await db
     .prepare(
-      `INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source,
+                              explanation_sources, created_by, created_at, added_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
     )
-    .bind(id, examId, num, data.question_text, JSON.stringify(data.options), JSON.stringify(data.answers), data.explanation, data.source, createdBy)
+    .bind(
+      id, examId, num, data.question_text, JSON.stringify(data.options),
+      JSON.stringify(data.answers), data.explanation, data.source,
+      JSON.stringify(data.explanation_sources ?? []), createdBy
+    )
     .run();
 
   const created = await getQuestionById(id);

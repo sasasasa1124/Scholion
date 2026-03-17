@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Plus, Trash2, Clock, ChevronDown, ChevronUp, Save, Loader2, Upload, FileText } from "lucide-react";
+import { X, Plus, Trash2, Clock, ChevronDown, ChevronUp, Save, Loader2, Upload, FileText, Link } from "lucide-react";
 import type { Choice, Question, QuestionHistoryEntry } from "@/lib/types";
 
 interface Props {
@@ -30,6 +30,9 @@ export default function QuestionEditModal({ question, examId, onClose, onSave, o
   const [answers, setAnswers] = useState<string[]>(question ? [...question.answers] : []);
   const [explanation, setExplanation] = useState(question?.explanation ?? "");
   const [source, setSource] = useState(question?.source ?? "");
+  const [explanationSources, setExplanationSources] = useState<string[]>(
+    question?.explanationSources ?? []
+  );
   const [changeReason, setChangeReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -99,6 +102,7 @@ export default function QuestionEditModal({ question, examId, onClose, onSave, o
             answers,
             explanation,
             source,
+            explanation_sources: explanationSources.filter(Boolean),
           }),
         });
       } else {
@@ -111,6 +115,7 @@ export default function QuestionEditModal({ question, examId, onClose, onSave, o
             answers,
             explanation,
             source,
+            explanation_sources: explanationSources.filter(Boolean),
             change_reason: changeReason,
           }),
         });
@@ -194,7 +199,13 @@ export default function QuestionEditModal({ question, examId, onClose, onSave, o
               <p className="text-xs text-gray-400 mt-0.5">
                 v{question!.version} · {question!.dbId}
                 {question!.createdBy && (
-                  <span className="ml-2">· created by {question!.createdBy}</span>
+                  <span className="ml-2">· by {question!.createdBy}</span>
+                )}
+                {question!.addedAt && (
+                  <span className="ml-2">· added {new Date(question!.addedAt).toLocaleDateString()}</span>
+                )}
+                {question!.createdAt && question!.createdAt !== question!.addedAt && (
+                  <span className="ml-2">· created {new Date(question!.createdAt).toLocaleDateString()}</span>
                 )}
               </p>
             )}
@@ -336,15 +347,52 @@ export default function QuestionEditModal({ question, examId, onClose, onSave, o
                 />
               </div>
 
-              {/* Source */}
+              {/* Question Source */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Source</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Question Source</label>
                 <input
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
                   placeholder="e.g. Official practice exam #3 Q12"
                 />
+              </div>
+
+              {/* Explanation Sources */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Explanation References
+                  <span className="ml-1 font-normal text-gray-400 normal-case">(URLs)</span>
+                </label>
+                <div className="space-y-2">
+                  {explanationSources.map((url, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Link size={13} className="shrink-0 text-gray-300" />
+                      <input
+                        value={url}
+                        onChange={(e) => {
+                          const next = [...explanationSources];
+                          next[i] = e.target.value;
+                          setExplanationSources(next);
+                        }}
+                        className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                        placeholder="https://..."
+                      />
+                      <button
+                        onClick={() => setExplanationSources((prev) => prev.filter((_, j) => j !== i))}
+                        className="shrink-0 p-1.5 rounded-lg hover:bg-rose-50 text-gray-300 hover:text-rose-400 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setExplanationSources((prev) => [...prev, ""])}
+                  className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
+                >
+                  <Plus size={13} /> Add reference URL
+                </button>
               </div>
 
               {/* Change reason (edit mode only) */}

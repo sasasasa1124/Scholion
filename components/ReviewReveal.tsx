@@ -44,7 +44,42 @@ export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: 
             <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{question.explanation}</p>
           </>
         )}
-        {question.source && <p className="text-xs text-gray-300 mt-4">Source: {question.source}</p>}
+        {/* Sources */}
+        {(question.source || question.explanationSources?.length > 0) && (
+          <div className="mt-4 space-y-1">
+            {question.source && (
+              <p className="text-xs text-gray-300">Question source: {question.source}</p>
+            )}
+            {question.explanationSources?.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">References:</p>
+                <ul className="space-y-0.5">
+                  {question.explanationSources.map((url, i) => (
+                    <li key={i}>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:text-blue-500 underline break-all"
+                      >
+                        {url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Timestamps */}
+        {(question.addedAt || question.createdAt) && (
+          <p className="text-xs text-gray-300 mt-2">
+            {question.addedAt && <>Added: {new Date(question.addedAt).toLocaleDateString()}</>}
+            {question.createdAt && question.createdAt !== question.addedAt && (
+              <> &middot; Created: {new Date(question.createdAt).toLocaleDateString()}</>
+            )}
+          </p>
+        )}
       </div>
 
       {/* Next */}
