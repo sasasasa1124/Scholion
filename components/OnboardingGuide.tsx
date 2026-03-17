@@ -80,7 +80,8 @@ export default function OnboardingGuide() {
       />
 
       {/* Bubble */}
-      <div className={`${pos.bubbleClass} relative pointer-events-auto`}>
+      <div className={pos.bubbleClass}>
+        <div className="relative pointer-events-auto">
         {/* Tail */}
         <div className={pos.tailClass} />
 
@@ -138,6 +139,7 @@ export default function OnboardingGuide() {
               {isLast ? t("onboardingDone") : t("onboardingNext")}
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>
