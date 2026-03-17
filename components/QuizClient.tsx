@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
+import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import QuizQuestion from "./QuizQuestion";
 import ReviewReveal from "./ReviewReveal";
 import QuestionEditModal from "./QuestionEditModal";
+import AiExplainPopup from "./AiExplainPopup";
+import { useSettings } from "@/lib/settings-context";
 
 interface Props {
   questions: Question[];
@@ -52,6 +55,15 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [streak, setStreak] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
+
+  const [aiPopupOpen, setAiPopupOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<AiExplainResponse | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiAdopting, setAiAdopting] = useState(false);
+
+  const { settings } = useSettings();
 
   const backHref = `/exam/${examId}`;
 
@@ -134,10 +146,12 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   }, [filteredQuestions, currentIndex, selected, recordAnswer, mode]);
 
   const goNext = useCallback(() => {
+    setDirection("forward");
     setCurrentIndex((i) => Math.min(i + 1, filteredQuestions.length - 1));
   }, [filteredQuestions.length]);
 
   const goPrev = useCallback(() => {
+    setDirection("backward");
     setCurrentIndex((i) => Math.max(i - 1, 0));
   }, []);
 
@@ -173,6 +187,72 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     setQuestions((prev) => prev.map((q) => (q.dbId === updated.dbId ? updated : q)));
   }, []);
 
+  const handleAiExplain = useCallback(async () => {
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    setAiPopupOpen(true);
+    setAiLoading(true);
+    setAiResult(null);
+    setAiError(null);
+    try {
+      const res = await fetch("/api/ai/explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: q.question,
+          choices: q.choices,
+          answers: q.answers,
+          explanation: q.explanation,
+          userPrompt: settings.aiPrompt,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        throw new Error(err.error ?? "Request failed");
+      }
+      const data = await res.json() as AiExplainResponse;
+      setAiResult(data);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "Failed to get AI explanation");
+    } finally {
+      setAiLoading(false);
+    }
+  }, [filteredQuestions, currentIndex, settings.aiPrompt]);
+
+  const handleAiAdopt = useCallback(async () => {
+    if (!aiResult) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    setAiAdopting(true);
+    try {
+      const res = await fetch(`/api/admin/questions/${encodeURIComponent(q.dbId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question_text: q.question,
+          options: q.choices,
+          answers: aiResult.answers,
+          explanation: aiResult.explanation,
+          change_reason: "AI-generated via Gemini",
+        }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      setQuestions((prev) =>
+        prev.map((pq) =>
+          pq.dbId === q.dbId
+            ? { ...pq, answers: aiResult.answers, explanation: aiResult.explanation }
+            : pq
+        )
+      );
+      setAiPopupOpen(false);
+      setAiResult(null);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "Failed to adopt answer");
+    } finally {
+      setAiAdopting(false);
+    }
+  }, [aiResult, filteredQuestions, currentIndex]);
+
   // Keyboard
   useEffect(() => {
     const q = filteredQuestions[currentIndex];
@@ -181,7 +261,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
 
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (editingQuestion) return;
+      if (editingQuestion || aiPopupOpen) return;
 
       if (mode === "review") {
         if (!revealed) {
@@ -202,7 +282,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
+  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, aiPopupOpen, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
 
   const ModeIcon = mode === "quiz" ? Brain : BookOpen;
   const isLast = currentIndex === filteredQuestions.length - 1;
@@ -273,6 +353,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
               <AlertCircle size={11} /> <span className="hidden sm:inline">Wrong</span> {wrongCount}
             </button>
           </div>
+          <Link href="/settings" className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Settings">
+            <Settings size={13} />
+          </Link>
         </div>
       </header>
 
@@ -293,50 +376,71 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           {/* Position indicator + edit button */}
           <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 flex items-center justify-between">
             <span className="text-xs tabular-nums text-gray-400">Q{currentIndex + 1}/{filteredQuestions.length}</span>
-            <button
-              onClick={() => setEditingQuestion(q)}
-              className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
-              title="Edit question"
-            >
-              <Pencil size={12} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAiExplain}
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-violet-500 transition-colors"
+                title="AI Explain"
+              >
+                <Sparkles size={12} />
+              </button>
+              <button
+                onClick={() => setEditingQuestion(q)}
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
+                title="Edit question"
+              >
+                <Pencil size={12} />
+              </button>
+            </div>
           </div>
 
           {mode === "review"
-            ? revealed
-              ? <ReviewReveal question={q} onNext={handleRevealNext} isLast={isLast} />
-              : <>
-                  <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
-                    <div className="bg-gray-50 rounded-xl px-5 py-4 mb-4">
-                      <div
-                        className="text-gray-900 text-sm leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
-                        dangerouslySetInnerHTML={{ __html: q.question }}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      {q.choices.map((c, i) => (
-                        <div key={c.label} className="border rounded-xl px-4 py-3 border-gray-100 bg-gray-50">
-                          <div className="flex items-start gap-3">
-                            <span className="shrink-0 w-6 h-6 rounded-lg border border-gray-200 bg-white text-xs font-bold flex items-center justify-center text-gray-400">{i + 1}</span>
-                            <span className="text-sm leading-relaxed pt-0.5 whitespace-pre-wrap text-gray-600">{c.text}</span>
-                          </div>
+            ? (
+                <div className="flex-1 relative overflow-hidden flip-card-perspective">
+                  <div key={currentIndex} className={`flip-card-inner ${revealed ? "is-flipped" : ""}`}>
+                    {/* Front: question */}
+                    <div className="card-front">
+                      <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
+                        <div className="bg-gray-50 rounded-xl px-5 py-4 mb-4">
+                          <div
+                            className="text-gray-900 text-sm leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
+                            dangerouslySetInnerHTML={{ __html: q.question }}
+                          />
                         </div>
-                      ))}
+                        <div className="space-y-2">
+                          {q.choices.map((c, i) => (
+                            <div key={c.label} className="border rounded-xl px-4 py-3 border-gray-100 bg-gray-50">
+                              <div className="flex items-start gap-3">
+                                <span className="shrink-0 w-6 h-6 rounded-lg border border-gray-200 bg-white text-xs font-bold flex items-center justify-center text-gray-400">{i + 1}</span>
+                                <span className="text-sm leading-relaxed pt-0.5 whitespace-pre-wrap text-gray-600">{c.text}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100">
+                        <div className="flex gap-2">
+                          <button onClick={handleDontKnow} className="flex-1 h-10 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+                            <ChevronLeft size={15} />
+                          </button>
+                          <button onClick={handleKnow} className="flex-1 h-10 rounded-xl border-2 border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+                            <ChevronRight size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Back: answer reveal */}
+                    <div className="card-back">
+                      <ReviewReveal question={q} onNext={handleRevealNext} isLast={isLast} />
                     </div>
                   </div>
-                  <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-gray-100">
-                    <div className="flex gap-2">
-                      <button onClick={handleDontKnow} className="flex-1 h-10 rounded-xl border-2 border-rose-200 text-rose-500 bg-rose-50 hover:bg-rose-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
-                        <ChevronLeft size={15} />
-                      </button>
-                      <button onClick={handleKnow} className="flex-1 h-10 rounded-xl border-2 border-emerald-200 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
-                        <ChevronRight size={15} />
-                      </button>
-                    </div>
-                  </div>
-                </>
+                </div>
+              )
             : <>
-                <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
+                <div
+                  key={currentIndex}
+                  className={`flex-1 overflow-y-auto px-4 sm:px-8 pb-4 ${direction === "forward" ? "question-slide-forward" : "question-slide-backward"}`}
+                >
                   <QuizQuestion
                     question={q}
                     selected={selected}
@@ -414,7 +518,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             return (
               <button
                 key={fq.id}
-                onClick={() => setCurrentIndex(i)}
+                onClick={() => { setDirection(i > currentIndex ? "forward" : "backward"); setCurrentIndex(i); }}
                 title={`Q${i + 1} · ${statusLabel}`}
                 className={`flex-1 rounded-full transition-all duration-150 cursor-pointer ${
                   isCurrent
@@ -434,7 +538,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             min={0}
             max={filteredQuestions.length - 1}
             value={currentIndex}
-            onChange={(e) => setCurrentIndex(Number(e.target.value))}
+            onChange={(e) => { const next = Number(e.target.value); setDirection(next > currentIndex ? "forward" : "backward"); setCurrentIndex(next); }}
             className="quiz-slider flex-1"
             style={{ "--fill": sliderPct } as React.CSSProperties}
           />
@@ -453,6 +557,22 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           question={editingQuestion}
           onClose={() => setEditingQuestion(null)}
           onSave={handleQuestionSave}
+        />
+      )}
+
+      {/* AI Explain popup */}
+      {aiPopupOpen && (
+        <AiExplainPopup
+          loading={aiLoading}
+          result={aiResult}
+          error={aiError}
+          adopting={aiAdopting}
+          onAdopt={handleAiAdopt}
+          onDismiss={() => {
+            setAiPopupOpen(false);
+            setAiResult(null);
+            setAiError(null);
+          }}
         />
       )}
     </div>

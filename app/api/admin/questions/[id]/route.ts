@@ -24,7 +24,11 @@ export async function PUT(
   }
 
   const userEmail = await getUserEmail();
-  await updateQuestion(id, body, userEmail);
+  await updateQuestion(
+    id,
+    { ...body, change_reason: body.change_reason ?? "manual edit" },
+    userEmail
+  );
 
   const updated = await getQuestionById(id);
   return NextResponse.json(updated);

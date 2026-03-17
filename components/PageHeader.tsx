@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Settings } from "lucide-react";
 
 interface Props {
   back?: { href: string; label?: string };
@@ -29,7 +29,16 @@ export default function PageHeader({ back, title, right }: Props) {
             <span className="text-sm text-gray-500 font-medium">{title}</span>
           </>
         )}
-        {right && <div className="ml-auto flex items-center gap-2">{right}</div>}
+        <div className="ml-auto flex items-center gap-2">
+          {right}
+          <Link
+            href="/settings"
+            className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Settings"
+          >
+            <Settings size={14} />
+          </Link>
+        </div>
       </div>
     </header>
   );

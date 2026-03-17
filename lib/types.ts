@@ -49,3 +49,13 @@ export interface QuestionHistoryEntry {
 export type QuizStat = 0 | 1;
 
 export type QuizStats = Record<string, QuizStat>; // key: String(question.id)
+
+export interface UserSettings {
+  language: "en" | "ja" | "zh" | "ko";
+  aiPrompt: string;
+}
+
+export const DEFAULT_USER_SETTINGS: UserSettings = {
+  language: "en",
+  aiPrompt: "",
+};
