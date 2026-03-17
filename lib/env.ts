@@ -9,10 +9,6 @@ export function getEnv(key: string): string | undefined {
   if (process.env.DEPLOY_TARGET === "local") {
     return process.env[key];
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getRequestContext() as any).env[key] as string | undefined;
-  } catch {
-    return process.env[key];
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (getRequestContext() as any).env?.[key] as string | undefined;
 }

@@ -5,8 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { Choice } from "@/lib/types";
 import { getSetting } from "@/lib/db";
-
-// Node.js runtime required for @google/genai
+import { getRequestContext } from "@cloudflare/next-on-pages";
 
 const ChoiceSchema = z.object({
   label: z.string(),
@@ -28,8 +27,8 @@ export async function POST(req: NextRequest) {
     userPrompt?: string;
   };
 
-  const { getEnv } = await import("@/lib/env");
-  const apiKey = getEnv("GEMINI_API_KEY");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const apiKey = (getRequestContext() as any).env?.GEMINI_API_KEY as string | undefined;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
   }
