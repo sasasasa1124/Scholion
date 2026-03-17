@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { Choice } from "@/lib/types";
+import { getSetting } from "@/lib/db";
 
 // Node.js runtime required for @google/genai — do NOT add `export const runtime = "edge"`
 
@@ -53,11 +54,12 @@ export async function POST(req: NextRequest) {
   ].filter(Boolean).join("\n");
 
   const ai = new GoogleGenAI({ apiKey });
+  const model = (await getSetting("gemini_model")) ?? "gemini-2.5-flash-preview-04-17";
 
   let raw: string;
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model,
       contents: lines,
       config: {
         tools: [{ googleSearch: {} }],

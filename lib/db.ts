@@ -302,3 +302,26 @@ export async function saveScore(
     .bind(userEmail, questionId, lastCorrect, correctDelta)
     .run();
 }
+
+// ── App settings ───────────────────────────────────────────────────────────
+
+export async function getSetting(key: string): Promise<string | null> {
+  const db = getDB();
+  if (!db) return null;
+  const row = await db
+    .prepare("SELECT value FROM app_settings WHERE key = ?")
+    .bind(key)
+    .first<{ value: string }>();
+  return row?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+  await db
+    .prepare(
+      "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))"
+    )
+    .bind(key, value)
+    .run();
+}

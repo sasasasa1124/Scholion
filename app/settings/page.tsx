@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, Sparkles, Wand2 } from "lucide-react";
+import { Check, Sparkles, Wand2, BrainCircuit, RefreshCw } from "lucide-react";
 import { useSettings } from "@/lib/settings-context";
 import PageHeader from "@/components/PageHeader";
 import type { Locale } from "@/lib/i18n";
@@ -19,6 +19,10 @@ export default function SettingsPage() {
   const [aiPrompt, setAiPrompt] = useState(settings.aiPrompt);
   const [aiRefinePrompt, setAiRefinePrompt] = useState(settings.aiRefinePrompt);
   const [saved, setSaved] = useState(false);
+  const [geminiModel, setGeminiModel] = useState("");
+  const [modelList, setModelList] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelListError, setModelListError] = useState<string | null>(null);
 
   // Sync local state when settings load from localStorage
   useEffect(() => {
@@ -27,8 +31,38 @@ export default function SettingsPage() {
     setAiRefinePrompt(settings.aiRefinePrompt);
   }, [settings.language, settings.aiPrompt, settings.aiRefinePrompt]);
 
-  function handleSave() {
+  // Load current gemini model from DB
+  useEffect(() => {
+    fetch("/api/app-settings?key=gemini_model")
+      .then((r) => r.json() as Promise<{ value: string | null }>)
+      .then(({ value }) => { if (value) setGeminiModel(value); })
+      .catch(() => {});
+  }, []);
+
+  async function fetchModelList() {
+    setFetchingModels(true);
+    setModelListError(null);
+    try {
+      const res = await fetch("/api/ai/models");
+      const data = await res.json() as { models?: string[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      setModelList(data.models ?? []);
+    } catch (e) {
+      setModelListError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetchingModels(false);
+    }
+  }
+
+  async function handleSave() {
     updateSettings({ language, aiPrompt, aiRefinePrompt });
+    if (geminiModel) {
+      await fetch("/api/app-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "gemini_model", value: geminiModel }),
+      }).catch(() => {});
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -92,6 +126,41 @@ export default function SettingsPage() {
             className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none"
             placeholder={t("aiRefinePromptPlaceholder")}
           />
+        </section>
+
+        {/* AI Model */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+            <BrainCircuit size={11} className="text-blue-400" />
+            AI Model
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">Gemini model used for Explain and Refine</p>
+          <div className="flex gap-2 items-center">
+            <input
+              list="gemini-model-list"
+              value={geminiModel}
+              onChange={(e) => setGeminiModel(e.target.value)}
+              className="flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              placeholder="gemini-2.5-flash-preview-04-17"
+            />
+            <button
+              type="button"
+              onClick={fetchModelList}
+              disabled={fetchingModels}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-3 rounded-2xl border border-gray-200 bg-white text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw size={13} className={fetchingModels ? "animate-spin" : ""} />
+              {fetchingModels ? "Loading..." : "Fetch models"}
+            </button>
+          </div>
+          {modelListError && (
+            <p className="mt-1.5 text-xs text-red-500">{modelListError}</p>
+          )}
+          {modelList.length > 0 && (
+            <datalist id="gemini-model-list">
+              {modelList.map((m) => <option key={m} value={m} />)}
+            </datalist>
+          )}
         </section>
 
         {/* Save */}
