@@ -23,7 +23,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<UserSettings>;
-        setSettings({ ...DEFAULT_USER_SETTINGS, ...parsed });
+        const merged = { ...DEFAULT_USER_SETTINGS, ...parsed };
+        // Empty prompt strings mean "not yet customized" — use the default
+        if (!parsed.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;
+        if (!parsed.aiRefinePrompt) merged.aiRefinePrompt = DEFAULT_USER_SETTINGS.aiRefinePrompt;
+        setSettings(merged);
       }
     } catch {
       // ignore
