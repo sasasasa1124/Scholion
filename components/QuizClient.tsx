@@ -5,14 +5,16 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
+import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 import QuizQuestion from "./QuizQuestion";
 import ReviewReveal from "./ReviewReveal";
 import QuestionEditModal from "./QuestionEditModal";
 import AiExplainPopup from "./AiExplainPopup";
+import AiRefinePopup from "./AiRefinePopup";
 import { useSettings } from "@/lib/settings-context";
 
 interface Props {
@@ -62,6 +64,12 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [aiResult, setAiResult] = useState<AiExplainResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiAdopting, setAiAdopting] = useState(false);
+
+  const [refinePopupOpen, setRefinePopupOpen] = useState(false);
+  const [refineLoading, setRefineLoading] = useState(false);
+  const [refineResult, setRefineResult] = useState<AiRefineResponse | null>(null);
+  const [refineError, setRefineError] = useState<string | null>(null);
+  const [refineAdopting, setRefineAdopting] = useState(false);
 
   const { settings } = useSettings();
 
@@ -253,6 +261,70 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     }
   }, [aiResult, filteredQuestions, currentIndex]);
 
+  const handleAiRefine = useCallback(async () => {
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    setRefinePopupOpen(true);
+    setRefineLoading(true);
+    setRefineResult(null);
+    setRefineError(null);
+    try {
+      const res = await fetch("/api/ai/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: q.question,
+          choices: q.choices,
+          userPrompt: settings.aiRefinePrompt,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        throw new Error(err.error ?? "Request failed");
+      }
+      const data = await res.json() as AiRefineResponse;
+      setRefineResult(data);
+    } catch (e) {
+      setRefineError(e instanceof Error ? e.message : "Failed to refine question");
+    } finally {
+      setRefineLoading(false);
+    }
+  }, [filteredQuestions, currentIndex, settings.aiRefinePrompt]);
+
+  const handleRefineAdopt = useCallback(async () => {
+    if (!refineResult) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    setRefineAdopting(true);
+    try {
+      const res = await fetch(`/api/admin/questions/${encodeURIComponent(q.dbId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question_text: refineResult.question,
+          options: refineResult.choices,
+          answers: q.answers,
+          explanation: q.explanation,
+          change_reason: `AI refined: ${refineResult.changesSummary || "typo/grammar fix"}`,
+        }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      setQuestions((prev) =>
+        prev.map((pq) =>
+          pq.dbId === q.dbId
+            ? { ...pq, question: refineResult.question, choices: refineResult.choices }
+            : pq
+        )
+      );
+      setRefinePopupOpen(false);
+      setRefineResult(null);
+    } catch (e) {
+      setRefineError(e instanceof Error ? e.message : "Failed to adopt refinement");
+    } finally {
+      setRefineAdopting(false);
+    }
+  }, [refineResult, filteredQuestions, currentIndex]);
+
   // Keyboard
   useEffect(() => {
     const q = filteredQuestions[currentIndex];
@@ -261,7 +333,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
 
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (editingQuestion || aiPopupOpen) return;
+      if (editingQuestion || aiPopupOpen || refinePopupOpen) return;
 
       if (mode === "review") {
         if (!revealed) {
@@ -282,7 +354,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, aiPopupOpen, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
+  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, aiPopupOpen, refinePopupOpen, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
 
   const ModeIcon = mode === "quiz" ? Brain : BookOpen;
   const isLast = currentIndex === filteredQuestions.length - 1;
@@ -377,6 +449,13 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 flex items-center justify-between">
             <span className="text-xs tabular-nums text-gray-400">Q{currentIndex + 1}/{filteredQuestions.length}</span>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleAiRefine}
+                className="flex items-center gap-1 text-xs text-gray-300 hover:text-amber-500 transition-colors"
+                title="AI Refine"
+              >
+                <Wand2 size={12} />
+              </button>
               <button
                 onClick={handleAiExplain}
                 className="flex items-center gap-1 text-xs text-gray-300 hover:text-violet-500 transition-colors"
@@ -572,6 +651,24 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             setAiPopupOpen(false);
             setAiResult(null);
             setAiError(null);
+          }}
+        />
+      )}
+
+      {/* AI Refine popup */}
+      {refinePopupOpen && (
+        <AiRefinePopup
+          originalQuestion={q.question}
+          originalChoices={q.choices}
+          loading={refineLoading}
+          result={refineResult}
+          error={refineError}
+          adopting={refineAdopting}
+          onAdopt={handleRefineAdopt}
+          onDismiss={() => {
+            setRefinePopupOpen(false);
+            setRefineResult(null);
+            setRefineError(null);
           }}
         />
       )}

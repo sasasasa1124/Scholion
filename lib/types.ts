@@ -53,9 +53,11 @@ export type QuizStats = Record<string, QuizStat>; // key: String(question.id)
 export interface UserSettings {
   language: "en" | "ja" | "zh" | "ko";
   aiPrompt: string;
+  aiRefinePrompt: string;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   language: "en",
   aiPrompt: "",
+  aiRefinePrompt: "",
 };

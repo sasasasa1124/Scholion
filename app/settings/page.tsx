@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check } from "lucide-react";
+import { Check, Sparkles, Wand2 } from "lucide-react";
 import { useSettings } from "@/lib/settings-context";
 import PageHeader from "@/components/PageHeader";
 import type { Locale } from "@/lib/i18n";
@@ -17,16 +17,18 @@ export default function SettingsPage() {
   const { settings, updateSettings, t } = useSettings();
   const [language, setLanguage] = useState<Locale>(settings.language);
   const [aiPrompt, setAiPrompt] = useState(settings.aiPrompt);
+  const [aiRefinePrompt, setAiRefinePrompt] = useState(settings.aiRefinePrompt);
   const [saved, setSaved] = useState(false);
 
   // Sync local state when settings load from localStorage
   useEffect(() => {
     setLanguage(settings.language);
     setAiPrompt(settings.aiPrompt);
-  }, [settings.language, settings.aiPrompt]);
+    setAiRefinePrompt(settings.aiRefinePrompt);
+  }, [settings.language, settings.aiPrompt, settings.aiRefinePrompt]);
 
   function handleSave() {
-    updateSettings({ language, aiPrompt });
+    updateSettings({ language, aiPrompt, aiRefinePrompt });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -60,20 +62,35 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* AI Prompt */}
+        {/* AI Explain Prompt */}
         <section>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+            <Sparkles size={11} className="text-violet-400" />
             {t("aiPrompt")}
           </h2>
-          <p className="text-xs text-gray-400 mb-3">
-            {t("aiPromptPlaceholder")}
-          </p>
+          <p className="text-xs text-gray-400 mb-3">{t("aiPromptPlaceholder")}</p>
           <textarea
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
-            rows={4}
-            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            rows={3}
+            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent resize-none"
             placeholder={t("aiPromptPlaceholder")}
+          />
+        </section>
+
+        {/* AI Refine Prompt */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+            <Wand2 size={11} className="text-amber-400" />
+            {t("aiRefinePrompt")}
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">{t("aiRefinePromptPlaceholder")}</p>
+          <textarea
+            value={aiRefinePrompt}
+            onChange={(e) => setAiRefinePrompt(e.target.value)}
+            rows={3}
+            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none"
+            placeholder={t("aiRefinePromptPlaceholder")}
           />
         </section>
 
