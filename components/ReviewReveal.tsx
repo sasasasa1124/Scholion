@@ -29,7 +29,7 @@ export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: 
             .map((c) => (
               <div key={c.label} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
                 <span className="shrink-0 w-6 h-6 rounded-md bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-                  {question.choices.findIndex(ch => ch.label === c.label) + 1}
+                  {c.label}
                 </span>
                 <span className="text-sm text-emerald-900 leading-snug">{c.text}</span>
               </div>

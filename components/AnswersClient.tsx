@@ -281,7 +281,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
                   <span className={`shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-md text-xs lg:text-sm font-bold flex items-center justify-center mt-0.5 ${
                     isAnswer ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-400"
                   }`}>
-                    {q.choices.indexOf(c) + 1}
+                    {c.label}
                   </span>
                   <span className={`text-sm lg:text-base leading-snug pt-0.5 whitespace-pre-wrap ${
                     isAnswer ? "text-emerald-900 font-medium" : "text-gray-500"
