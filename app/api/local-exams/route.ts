@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { getExamList } from "@/lib/csv";
 
-export const runtime = "edge";
-
-// Node.js compat (nodejs_compat flag) — reads CSV files for local dev fallback
+// Node.js runtime required — reads CSV files via fs/process.cwd()
 export async function GET() {
-  const exams = getExamList();
+  const exams = await getExamList();
   return NextResponse.json(exams);
 }
