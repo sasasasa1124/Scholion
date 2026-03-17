@@ -6,12 +6,20 @@ import type { Choice, ExamMeta, Question } from "./types";
 function getCSVDir(): string { return path.join(process.cwd(), ".."); }
 
 const EXAM_NAMES: Record<string, string> = {
-  experience_cloud_consultant_exam: "Experience Cloud Consultant",
-  mule_dev_201_exam: "MuleSoft Developer I (DEV201)",
-  plat_arch_202_exam: "Platform App Builder / Architect 202",
-  platform_iam_architect_exam: "Platform Identity & Access Mgmt Architect",
-  service_cloud_consultant_exam: "Service Cloud Consultant",
-  ux_designer_exam: "UX Designer",
+  // ── 日本語版 ──────────────────────────────────────────────────────────────
+  experience_cloud_consultant_exam:    "Salesforce 認定 Experience Cloud コンサルタント",
+  mule_dev_201_exam:                   "Salesforce 認定 MuleSoft デベロッパー",
+  plat_arch_202_exam:                  "Salesforce 認定 Development Lifecycle and Deployment アーキテクト",
+  platform_iam_architect_exam:         "Salesforce 認定 Identity and Access Management アーキテクト",
+  service_cloud_consultant_exam:       "Salesforce 認定 Service Cloud コンサルタント",
+  ux_designer_exam:                    "Salesforce 認定 UX デザイナー",
+  // ── 英語版 ────────────────────────────────────────────────────────────────
+  experience_cloud_consultant_exam_en: "Salesforce Certified Experience Cloud Consultant",
+  mule_dev_201_exam_en:                "Salesforce Certified MuleSoft Developer",
+  plat_arch_202_exam_en:               "Salesforce Certified Development Lifecycle and Deployment Architect",
+  platform_iam_architect_exam_en:      "Salesforce Certified Identity and Access Management Architect",
+  service_cloud_consultant_exam_en:    "Salesforce Certified Service Cloud Consultant",
+  ux_designer_exam_en:                 "Salesforce Certified User Experience Designer",
 };
 
 // Detect language from parsed CSV records via character-code majority vote.
@@ -68,8 +76,7 @@ export function getExamList(): ExamMeta[] {
   for (const file of files) {
     const id = file.replace(".csv", "");
     // Strip known _en suffix for display name lookup, but don't rely on it for language
-    const baseName = id.endsWith("_en") ? id.slice(0, -3) : id;
-    const displayName = EXAM_NAMES[baseName] ?? baseName;
+    const displayName = EXAM_NAMES[id] ?? id;
 
     try {
       const content = fs.readFileSync(path.join(getCSVDir(), file), "utf-8");
