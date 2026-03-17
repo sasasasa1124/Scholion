@@ -14,8 +14,11 @@ interface Props {
 
 export default function AnswerRevealModal({ question, isCorrect, isLast, onNext, onAiExplain }: Props) {
   // Keyboard: Escape / N / Enter → next
+  // 150ms guard prevents the same keydown that triggered Submit from instantly dismissing the modal
   useEffect(() => {
+    const ready = Date.now();
     const handler = (e: KeyboardEvent) => {
+      if (Date.now() - ready < 150) return;
       if (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "Enter") {
         e.preventDefault();
         onNext();
@@ -107,7 +110,6 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
           </button>
           <button
             onClick={onNext}
-            autoFocus
             className="flex items-center gap-1.5 px-5 py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-700 transition-colors"
           >
             {isLast ? "Finish" : <><ChevronRight size={15} /> Next</>}
