@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -75,9 +75,29 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [refineError, setRefineError] = useState<string | null>(null);
   const [refineAdopting, setRefineAdopting] = useState(false);
 
+  const [sessionId] = useState<string>(() => crypto.randomUUID());
+  const [sessionCorrectCount, setSessionCorrectCount] = useState(0);
+  const sessionCompletedRef = useRef(false);
+
   const { settings } = useSettings();
 
   const backHref = `/exam/${examId}`;
+
+  // Create session on mount
+  useEffect(() => {
+    fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        examId,
+        mode,
+        filter: "all",
+        questionCount: initialQuestions.length,
+      }),
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load local stats then merge with DB stats (DB wins)
   useEffect(() => {
@@ -113,20 +133,21 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const overallRate = totalAnswered > 0 ? Math.round((totalCorrect / questions.length) * 100) : null;
   const wrongCount = questions.filter((q) => stats[String(q.id)] === 0).length;
 
-  const recordAnswer = useCallback((questionId: number, correct: boolean) => {
+  const recordAnswer = useCallback((questionId: number, correct: boolean, questionDbId: string) => {
     setStats((prev) => {
       const next = { ...prev, [String(questionId)]: correct ? 1 : 0 } as QuizStats;
       saveLocalStats(examId, next);
       recordDailySnapshot(examId, next, questions.length);
       return next;
     });
+    if (correct) setSessionCorrectCount((c) => c + 1);
     // Fire-and-forget sync to DB
     fetch("/api/scores", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ examId, questionId, correct }),
+      body: JSON.stringify({ examId, questionId, correct, sessionId, questionDbId }),
     }).catch(() => {});
-  }, [examId]);
+  }, [examId, sessionId]);
 
   const handleToggle = useCallback((label: string) => {
     if (submitted) return;
@@ -152,7 +173,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     const correct = q.answers.length === selected.size && q.answers.every((a) => selected.has(a));
     setIsCorrect(correct);
     setSubmitted(true);
-    recordAnswer(q.id, correct);
+    recordAnswer(q.id, correct, q.dbId);
     if (mode !== "review") {
       setStreak((prev) => correct ? prev + 1 : 0);
     }
@@ -168,33 +189,53 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     setCurrentIndex((i) => Math.max(i - 1, 0));
   }, []);
 
+  const doCompleteSession = useCallback(() => {
+    if (sessionCompletedRef.current) return;
+    sessionCompletedRef.current = true;
+    navigator.sendBeacon(
+      `/api/sessions/${sessionId}`,
+      new Blob(
+        [JSON.stringify({ correctCount: sessionCorrectCount })],
+        { type: "application/json" }
+      )
+    );
+  }, [sessionId, sessionCorrectCount]);
+
+  // Complete session on tab close / refresh
+  useEffect(() => {
+    window.addEventListener("beforeunload", doCompleteSession);
+    return () => window.removeEventListener("beforeunload", doCompleteSession);
+  }, [doCompleteSession]);
+
   const handleKnow = useCallback(() => {
     const q = filteredQuestions[currentIndex];
     if (!q) return;
-    recordAnswer(q.id, true);
+    recordAnswer(q.id, true, q.dbId);
     setStreak((prev) => prev + 1);
     if (currentIndex === filteredQuestions.length - 1) {
+      doCompleteSession();
       router.push(backHref);
     } else {
       goNext();
     }
-  }, [filteredQuestions, currentIndex, recordAnswer, goNext, router, backHref]);
+  }, [filteredQuestions, currentIndex, recordAnswer, goNext, router, backHref, doCompleteSession]);
 
   const handleDontKnow = useCallback(() => {
     const q = filteredQuestions[currentIndex];
     if (!q) return;
-    recordAnswer(q.id, false);
+    recordAnswer(q.id, false, q.dbId);
     setStreak(0);
     setRevealed(true);
   }, [filteredQuestions, currentIndex, recordAnswer]);
 
   const handleRevealNext = useCallback(() => {
     if (currentIndex === filteredQuestions.length - 1) {
+      doCompleteSession();
       router.push(backHref);
     } else {
       goNext();
     }
-  }, [currentIndex, filteredQuestions.length, goNext, router, backHref]);
+  }, [currentIndex, filteredQuestions.length, goNext, router, backHref, doCompleteSession]);
 
   const handleQuestionSave = useCallback((updated: Question) => {
     setQuestions((prev) => {
@@ -305,8 +346,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     }
   }, [filteredQuestions, currentIndex, settings.aiRefinePrompt]);
 
-  const handleRefineAdopt = useCallback(async () => {
-    if (!refineResult) return;
+  const handleRefineAdopt = useCallback(async (edited: { question: string; choices: typeof initialQuestions[0]["choices"] }) => {
     const q = filteredQuestions[currentIndex];
     if (!q) return;
     setRefineAdopting(true);
@@ -315,18 +355,18 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question_text: refineResult.question,
-          options: refineResult.choices,
+          question_text: edited.question,
+          options: edited.choices,
           answers: q.answers,
           explanation: q.explanation,
-          change_reason: `AI refined: ${refineResult.changesSummary || "typo/grammar fix"}`,
+          change_reason: `AI refined: ${refineResult?.changesSummary || "typo/grammar fix"}`,
         }),
       });
       if (!res.ok) throw new Error("Update failed");
       setQuestions((prev) =>
         prev.map((pq) =>
           pq.dbId === q.dbId
-            ? { ...pq, question: refineResult.question, choices: refineResult.choices }
+            ? { ...pq, question: edited.question, choices: edited.choices }
             : pq
         )
       );
@@ -337,7 +377,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     } finally {
       setRefineAdopting(false);
     }
-  }, [refineResult, filteredQuestions, currentIndex]);
+  }, [filteredQuestions, currentIndex]);
 
   // Keyboard
   useEffect(() => {
@@ -391,9 +431,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             Show all
           </button>
         )}
-        <Link href={backHref} className="text-sm text-gray-400 hover:text-gray-700 flex items-center gap-1.5">
+        <button onClick={() => { doCompleteSession(); router.push(backHref); }} className="text-sm text-gray-400 hover:text-gray-700 flex items-center gap-1.5">
           <ArrowLeft size={14} />
-        </Link>
+        </button>
       </div>
     );
   }
@@ -405,9 +445,12 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
       {/* ── Header ── */}
       <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <Link href={backHref} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0">
+          <button
+            onClick={() => { doCompleteSession(); router.push(backHref); }}
+            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0"
+          >
             <ArrowLeft size={14} />
-          </Link>
+          </button>
           <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
             <ModeIcon size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">{examName}</span>
@@ -440,7 +483,11 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
               <AlertCircle size={11} /> <span className="hidden sm:inline">Wrong</span> {wrongCount}
             </button>
           </div>
-          <Link href="/settings" className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Settings">
+          <Link
+            href={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}`)}`}
+            className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Settings"
+          >
             <Settings size={13} />
           </Link>
         </div>

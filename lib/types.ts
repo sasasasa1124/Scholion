@@ -99,6 +99,18 @@ Respond ONLY with a JSON object (no markdown, no code fences) with exactly these
 - choices: array of corrected choices in the same order (identical to input if no errors found)
 - changesSummary: a brief human-readable summary of what was changed, or empty string if nothing changed`;
 
+export interface SessionRecord {
+  id: string;
+  userEmail: string;
+  examId: string;
+  mode: "quiz" | "review";
+  filter: "all" | "wrong";
+  startedAt: string;
+  completedAt: string | null;
+  questionCount: number;
+  correctCount: number | null;
+}
+
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   language: "en",
   aiPrompt: DEFAULT_EXPLAIN_PROMPT,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, RotateCcw, ChevronDown, Loader2 } from "lucide-react";
-import type { ExamMeta, QuizStats, CategoryStat, ExamSnapshot } from "@/lib/types";
+import type { ExamMeta, QuizStats, CategoryStat, ExamSnapshot, SessionRecord } from "@/lib/types";
 import PageHeader from "./PageHeader";
 import ExamTrendChart from "./ExamTrendChart";
 import CategoryChart from "./CategoryChart";
@@ -38,6 +38,7 @@ export default function ProfileClient({ exams }: Props) {
   const [categoryCache, setCategoryCache] = useState<Record<string, CategoryStat[]>>({});
   const [categoryLoading, setCategoryLoading] = useState<Record<string, boolean>>({});
   const [snapshotsMap, setSnapshotsMap] = useState<Record<string, ExamSnapshot[]>>({});
+  const [sessionCache, setSessionCache] = useState<Record<string, SessionRecord[]>>({});
 
   useEffect(() => {
     const map: Record<string, ExamStats> = {};
@@ -70,6 +71,12 @@ export default function ProfileClient({ exams }: Props) {
         .then((data) => setCategoryCache((prev) => ({ ...prev, [examId]: data })))
         .catch(() => {})
         .finally(() => setCategoryLoading((prev) => ({ ...prev, [examId]: false })));
+    }
+    if (!sessionCache[examId]) {
+      fetch(`/api/sessions?examId=${encodeURIComponent(examId)}`)
+        .then((r) => r.json() as Promise<SessionRecord[]>)
+        .then((data) => setSessionCache((prev) => ({ ...prev, [examId]: data })))
+        .catch(() => {});
     }
   }
 
@@ -134,6 +141,7 @@ export default function ProfileClient({ exams }: Props) {
               const snapshots = snapshotsMap[exam.id] ?? [];
               const catStats = categoryCache[exam.id] ?? [];
               const isLoadingCat = categoryLoading[exam.id] ?? false;
+              const sessions = sessionCache[exam.id] ?? [];
               const hasCatData = catStats.some((c) => c.attempted > 0);
 
               return (
@@ -207,6 +215,44 @@ export default function ProfileClient({ exams }: Props) {
                           <CategoryChart stats={catStats} />
                         </div>
                       ) : null}
+
+                      {/* Session history */}
+                      {sessions.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                            Session History
+                          </p>
+                          <div className="space-y-1">
+                            {sessions.map((s) => {
+                              const pct = s.correctCount != null
+                                ? Math.round((s.correctCount / s.questionCount) * 100)
+                                : null;
+                              return (
+                                <div key={s.id} className="flex items-center justify-between text-xs py-1.5 px-3 bg-gray-50 rounded-xl">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-500 font-medium uppercase">
+                                      {s.mode}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      {new Date(s.startedAt + "Z").toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                  <span className={`font-semibold tabular-nums ${
+                                    pct === null ? "text-gray-300"
+                                    : pct >= 80 ? "text-emerald-600"
+                                    : pct >= 60 ? "text-amber-500"
+                                    : "text-rose-500"
+                                  }`}>
+                                    {s.correctCount != null
+                                      ? `${s.correctCount}/${s.questionCount}`
+                                      : `—/${s.questionCount}`}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Actions */}
                       <div className="flex gap-2 pt-1">

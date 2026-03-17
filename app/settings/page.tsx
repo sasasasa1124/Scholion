@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Check, Sparkles, Wand2, BrainCircuit, RefreshCw } from "lucide-react";
 import { useSettings } from "@/lib/settings-context";
 import PageHeader from "@/components/PageHeader";
@@ -13,7 +14,11 @@ const LANGUAGES: { value: Locale; label: string; native: string }[] = [
   { value: "ko", label: "Korean", native: "한국어" },
 ];
 
-export default function SettingsPage() {
+function SettingsInner() {
+  const searchParams = useSearchParams();
+  const raw = searchParams.get("returnTo") ?? "/";
+  const returnTo = raw.startsWith("/") ? raw : "/";
+
   const { settings, updateSettings, t } = useSettings();
   const [language, setLanguage] = useState<Locale>(settings.language);
   const [aiPrompt, setAiPrompt] = useState(settings.aiPrompt);
@@ -69,7 +74,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
-      <PageHeader back={{ href: "/" }} title={t("settings")} />
+      <PageHeader back={{ href: returnTo }} title={t("settings")} hideSettingsIcon />
       <main className="flex-1 px-4 sm:px-8 py-8 max-w-xl mx-auto w-full space-y-8">
 
         {/* Language */}
@@ -183,5 +188,13 @@ export default function SettingsPage() {
         </button>
       </main>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense>
+      <SettingsInner />
+    </Suspense>
   );
 }

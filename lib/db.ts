@@ -1,4 +1,4 @@
-import type { CategoryStat, Choice, ExamMeta, Question, QuestionHistoryEntry, QuizStats } from "./types";
+import type { CategoryStat, Choice, ExamMeta, Question, QuestionHistoryEntry, QuizStats, SessionRecord } from "./types";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 
 // Minimal D1 type stub – replaced by @cloudflare/workers-types after npm install
@@ -356,6 +356,88 @@ export async function saveScore(
     )
     .bind(userEmail, questionId, lastCorrect, correctDelta)
     .run();
+}
+
+// ── Sessions ───────────────────────────────────────────────────────────────
+
+export async function createSession(
+  userEmail: string,
+  examId: string,
+  mode: "quiz" | "review",
+  filter: "all" | "wrong",
+  questionCount: number,
+  sessionId: string
+): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO sessions (id, user_email, exam_id, mode, filter, started_at, question_count)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), ?)`
+    )
+    .bind(sessionId, userEmail, examId, mode, filter, questionCount)
+    .run();
+}
+
+export async function completeSession(
+  sessionId: string,
+  correctCount: number
+): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+  await db
+    .prepare(
+      `UPDATE sessions SET completed_at = datetime('now'), correct_count = ? WHERE id = ?`
+    )
+    .bind(correctCount, sessionId)
+    .run();
+}
+
+export async function addSessionAnswer(
+  sessionId: string,
+  questionId: string,
+  isCorrect: boolean
+): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+  await db
+    .prepare(
+      `INSERT INTO session_answers (session_id, question_id, is_correct, answered_at)
+       VALUES (?, ?, ?, datetime('now'))`
+    )
+    .bind(sessionId, questionId, isCorrect ? 1 : 0)
+    .run();
+}
+
+export async function getSessionsByExam(
+  userEmail: string,
+  examId: string,
+  limit = 20
+): Promise<SessionRecord[]> {
+  const db = getDB();
+  if (!db) return [];
+  const result = await db
+    .prepare(
+      `SELECT id, user_email, exam_id, mode, filter, started_at, completed_at, question_count, correct_count
+       FROM sessions WHERE user_email = ? AND exam_id = ?
+       ORDER BY started_at DESC LIMIT ?`
+    )
+    .bind(userEmail, examId, limit)
+    .all<{
+      id: string; user_email: string; exam_id: string; mode: string; filter: string;
+      started_at: string; completed_at: string | null; question_count: number; correct_count: number | null;
+    }>();
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    userEmail: row.user_email,
+    examId: row.exam_id,
+    mode: row.mode as "quiz" | "review",
+    filter: row.filter as "all" | "wrong",
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    questionCount: row.question_count,
+    correctCount: row.correct_count,
+  }));
 }
 
 // ── App settings ───────────────────────────────────────────────────────────
