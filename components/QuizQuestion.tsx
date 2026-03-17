@@ -86,7 +86,7 @@ export default function QuizQuestion({
             >
               <div className="flex items-start gap-3">
                 <span className={`shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-lg border text-xs lg:text-sm font-bold flex items-center justify-center transition-all ${badge}`}>
-                  {i + 1}
+                  {choice.label}
                 </span>
                 <span className={`text-sm lg:text-base leading-relaxed pt-0.5 whitespace-pre-wrap ${textColor}`}>
                   {choice.text}

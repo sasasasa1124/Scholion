@@ -356,8 +356,8 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
         }
         return;
       }
-      const num = parseInt(e.key);
-      if (!isNaN(num) && num >= 1 && num <= labels.length) { handleToggle(labels[num - 1]); return; }
+      const letter = e.key.toUpperCase();
+      if (labels.includes(letter)) { handleToggle(letter); return; }
       if (e.key === "Enter")      { submitted ? goNext() : handleSubmit(); }
       if (e.key === "ArrowRight") goNext();
       if (e.key === "ArrowLeft")  goPrev();
@@ -495,7 +495,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                             {q.choices.map((c, i) => (
                               <div key={c.label} className="border rounded-xl px-4 py-3 lg:px-5 lg:py-4 border-gray-100 bg-gray-50">
                                 <div className="flex items-start gap-3">
-                                  <span className="shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-lg border border-gray-200 bg-white text-xs lg:text-sm font-bold flex items-center justify-center text-gray-400">{i + 1}</span>
+                                  <span className="shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-lg border border-gray-200 bg-white text-xs lg:text-sm font-bold flex items-center justify-center text-gray-400">{c.label}</span>
                                   <span className="text-sm lg:text-base leading-relaxed pt-0.5 whitespace-pre-wrap text-gray-600">{c.text}</span>
                                 </div>
                               </div>
@@ -564,7 +564,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                           <div className={`flex items-center gap-2 ${isCorrect ? "text-emerald-600" : "text-rose-600"}`}>
                             {isCorrect
                               ? <><CheckCircle2 size={17} strokeWidth={2.5} />{streak > 1 && <span className="text-xs text-emerald-400 ml-1">{streak}</span>}</>
-                              : <><XCircle size={17} strokeWidth={2.5} /><span className="text-xs text-gray-400 ml-1">{q.answers.map(a => q.choices.findIndex(c => c.label === a) + 1).join(", ")}</span></>
+                              : <><XCircle size={17} strokeWidth={2.5} /><span className="text-xs text-gray-400 ml-1">{q.answers.join(", ")}</span></>
                             }
                           </div>
                           <button
