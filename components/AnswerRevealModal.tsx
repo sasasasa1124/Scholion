@@ -71,20 +71,22 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
-          {/* Correct answers */}
-          <div>
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Correct Answer</p>
-            <div className="flex flex-col gap-2">
-              {correctChoices.map((c) => (
-                <div key={c.label} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <span className="shrink-0 w-6 h-6 rounded-md bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-                    {c.label}
-                  </span>
-                  <span className="text-sm text-emerald-900 leading-snug">{c.text}</span>
-                </div>
-              ))}
+          {/* Correct answers — only shown when incorrect */}
+          {!isCorrect && (
+            <div>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Correct Answer</p>
+              <div className="flex flex-col gap-2">
+                {correctChoices.map((c) => (
+                  <div key={c.label} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <span className="shrink-0 w-6 h-6 rounded-md bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                      {c.label}
+                    </span>
+                    <span className="text-sm text-emerald-900 leading-snug">{c.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Explanation */}
           {question.explanation && (
