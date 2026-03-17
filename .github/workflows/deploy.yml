@@ -16,21 +16,17 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: quiz/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: quiz
 
       - name: Build for Cloudflare Pages
         run: npm run build:cf
-        working-directory: quiz
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy .vercel/output/static --project-name quiz --branch main
-        working-directory: quiz
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
