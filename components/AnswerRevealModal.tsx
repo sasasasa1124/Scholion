@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { CheckCircle2, XCircle, ChevronRight, Sparkles } from "lucide-react";
 import type { Question } from "@/lib/types";
+import { useSettings } from "@/lib/settings-context";
 
 interface Props {
   question: Question;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function AnswerRevealModal({ question, isCorrect, isLast, onNext, onAiExplain }: Props) {
+  const { t } = useSettings();
   // Keyboard: Escape / N / Enter → next
   // 150ms guard prevents the same keydown that triggered Submit from instantly dismissing the modal
   useEffect(() => {
@@ -155,7 +157,7 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
             className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-gray-500 hover:text-violet-500 hover:border-violet-200 transition-colors"
           >
             <Sparkles size={13} />
-            AI Explain
+            {t("explain")}
           </button>
           <button
             onClick={onNext}

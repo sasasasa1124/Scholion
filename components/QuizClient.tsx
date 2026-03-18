@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 import QuizQuestion from "./QuizQuestion";
@@ -19,6 +20,13 @@ import AnswerRevealModal from "./AnswerRevealModal";
 import KeyboardHintToast from "./KeyboardHintToast";
 import { useSettings } from "@/lib/settings-context";
 import { recordDailySnapshot } from "@/lib/snapshots";
+
+const LANG_OPTIONS: { value: Locale; label: string }[] = [
+  { value: "en", label: "EN" },
+  { value: "ja", label: "日本語" },
+  { value: "zh", label: "中文" },
+  { value: "ko", label: "한국어" },
+];
 
 interface Props {
   questions: Question[];
@@ -82,9 +90,20 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const touchStartY = useRef<number | null>(null);
   const touchZone = useRef<"top" | "bottom" | null>(null);
 
-  const { settings } = useSettings();
+  const { settings, updateSettings, t } = useSettings();
+  const [langOpen, setLangOpen] = useState(false);
+  const langRef = useRef<HTMLDivElement>(null);
 
   const backHref = `/exam/${examId}`;
+
+  // Close language dropdown on outside click
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
 
   // Create session on mount
   useEffect(() => {
@@ -509,6 +528,28 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
               <AlertCircle size={11} /> <span className="hidden sm:inline">Wrong</span> {wrongCount}
             </button>
           </div>
+          <div ref={langRef} className="relative">
+            <button
+              onClick={() => setLangOpen((o) => !o)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Language"
+            >
+              <Globe size={13} />
+            </button>
+            {langOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[90px]">
+                {LANG_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { updateSettings({ language: opt.value }); setLangOpen(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${settings.language === opt.value ? "font-semibold text-blue-600" : "text-gray-700"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Link
             href={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}`)}`}
             className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -554,9 +595,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                       <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                         <div className="max-w-3xl mx-auto w-full">
                           <div className="flex justify-end gap-2 mb-2">
-                            <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title="AI Refine">
+                            <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title={t("refine")}>
                               <Wand2 size={12} />
-                              AI Refine
+                              {t("refine")}
                             </button>
                             <button onClick={() => setEditingQuestion(q)} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors" title="Edit question">
                               <Pencil size={12} />
@@ -606,7 +647,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                 >
                   <div className="max-w-3xl mx-auto w-full h-full">
                     <div className="flex justify-end gap-2 mb-2">
-                      <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title="AI Refine">
+                      <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title={t("refine")}>
                         <Wand2 size={12} />
                         AI Refine
                       </button>

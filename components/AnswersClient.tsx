@@ -24,7 +24,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
-  const { settings } = useSettings();
+  const { settings, t } = useSettings();
 
   const [aiPopupOpen, setAiPopupOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -254,7 +254,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
               <button
                 onClick={handleAiRefine}
                 className="text-gray-300 hover:text-amber-500 transition-colors"
-                title="AI Refine"
+                title={t("refine")}
               >
                 <Wand2 size={12} />
               </button>
@@ -300,7 +300,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
               <button
                 onClick={handleAiExplain}
                 className="text-gray-300 hover:text-violet-500 transition-colors"
-                title="AI Explain"
+                title={t("explain")}
               >
                 <Sparkles size={12} />
               </button>
