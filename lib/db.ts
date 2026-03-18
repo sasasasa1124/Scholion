@@ -631,7 +631,16 @@ export async function getAllUserSettings(userEmail: string): Promise<UserSetting
   const raw: Partial<UserSettings> = {};
   for (const row of result.results) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (raw as any)[row.key] = row.key === "dailyGoal" ? Number(row.value) : row.value;
+    if (row.key === "dailyGoal" || row.key === "audioSpeed") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (raw as any)[row.key] = Number(row.value);
+    } else if (row.key === "audioMode") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (raw as any)[row.key] = row.value === "true";
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (raw as any)[row.key] = row.value;
+    }
   }
   const merged: UserSettings = { ...DEFAULT_USER_SETTINGS, ...raw };
   if (!merged.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;

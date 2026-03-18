@@ -67,6 +67,8 @@ export interface UserSettings {
   aiPrompt: string;
   aiRefinePrompt: string;
   dailyGoal: number; // questions per day target
+  audioMode: boolean; // read questions aloud
+  audioSpeed: number; // playback rate 0.5–4.0
 }
 
 export const DEFAULT_EXPLAIN_PROMPT = `You are a Salesforce/MuleSoft certification exam expert.
@@ -89,7 +91,7 @@ Respond ONLY with a JSON object (no markdown, no code fences) with exactly these
 - sources: array of 1–3 URLs that directly support the answer (official docs, Trailhead, etc.). Use [] if none found.`;
 
 export const DEFAULT_REFINE_PROMPT = `You are an expert editor for Salesforce/MuleSoft certification exam questions.
-Your task is to fix ONLY typos, grammatical errors, spelling mistakes, and awkward phrasing in the question text and answer choices.
+Your task is to fix ONLY typos, grammatical errors, spelling mistakes, and awkward phrasing, missing line breaks (either in list, bullets) in the question text and answer choices.
 Do NOT change the meaning, technical content, correct answers, or add/remove choices.
 Do NOT rewrite or rephrase if there is no error — preserve the original wording as much as possible.
 
@@ -122,4 +124,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   aiPrompt: DEFAULT_EXPLAIN_PROMPT,
   aiRefinePrompt: DEFAULT_REFINE_PROMPT,
   dailyGoal: 20,
+  audioMode: false,
+  audioSpeed: 1.0,
 };

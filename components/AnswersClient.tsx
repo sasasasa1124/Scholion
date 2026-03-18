@@ -8,6 +8,8 @@ import QuestionEditModal from "./QuestionEditModal";
 import AiExplainPopup from "./AiExplainPopup";
 import AiRefinePopup from "./AiRefinePopup";
 import { useSettings } from "@/lib/settings-context";
+import { useAudio } from "@/hooks/useAudio";
+import { buildAnswerText } from "@/lib/ttsText";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 
@@ -25,6 +27,16 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
   const { settings, t } = useSettings();
+  const { speak, stop } = useAudio();
+
+  // Auto-play when question changes
+  useEffect(() => {
+    const q = questions[currentIndex];
+    if (!q) return;
+    speak(buildAnswerText(q, settings.language));
+    return () => { stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex]);
 
   const [aiPopupOpen, setAiPopupOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);

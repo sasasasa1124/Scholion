@@ -19,6 +19,8 @@ import AiRefinePopup from "./AiRefinePopup";
 import AnswerRevealModal from "./AnswerRevealModal";
 import KeyboardHintToast from "./KeyboardHintToast";
 import { useSettings } from "@/lib/settings-context";
+import { useAudio } from "@/hooks/useAudio";
+import { buildQuestionText, buildAnswerRevealText } from "@/lib/ttsText";
 import { recordDailySnapshot } from "@/lib/snapshots";
 
 const LANG_OPTIONS: { value: Locale; label: string }[] = [
@@ -111,6 +113,28 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const touchZone = useRef<"top" | "bottom" | null>(null);
 
   const { settings, updateSettings, t } = useSettings();
+  const { speak, stop } = useAudio();
+
+  // Review mode: auto-play question + choices when question changes
+  useEffect(() => {
+    if (mode !== "review") return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    speak(buildQuestionText(q));
+    return () => { stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, mode]);
+
+  // Review mode: auto-play answer reveal when card is flipped
+  useEffect(() => {
+    if (mode !== "review" || !revealed) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    stop();
+    speak(buildAnswerRevealText(q, settings.language));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed]);
+
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
 
