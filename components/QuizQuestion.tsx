@@ -47,9 +47,9 @@ export default function QuizQuestion({
           dangerouslySetInnerHTML={{ __html: question.question }}
         />
         {question.source && (
-          <p className="text-[10px] text-gray-300 mt-2 truncate" title={question.source}>
+          <a href={question.source} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-300 hover:text-blue-400 mt-2 truncate block" title={question.source}>
             Source: {question.source}
-          </p>
+          </a>
         )}
       </div>
 

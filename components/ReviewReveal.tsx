@@ -50,7 +50,12 @@ export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: 
         {(question.source || question.explanationSources?.length > 0) && (
           <div className="mt-4 space-y-1">
             {question.source && (
-              <p className="text-xs text-gray-300">Question source: {question.source}</p>
+              <p className="text-xs text-gray-300">
+                Question source:{" "}
+                <a href={question.source} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-500 underline break-all">
+                  {question.source}
+                </a>
+              </p>
             )}
             {question.explanationSources?.length > 0 && (
               <div>
