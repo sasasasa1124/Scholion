@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getScores, saveScore, addSessionAnswer } from "@/lib/db";
+import { getScores, getAllScores, saveScore, addSessionAnswer } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
 export const runtime = "edge";
@@ -7,9 +7,14 @@ export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
   const examId = req.nextUrl.searchParams.get("examId");
-  if (!examId) return NextResponse.json({ error: "examId required" }, { status: 400 });
-
   const userEmail = await getUserEmail();
+
+  if (!examId) {
+    // Return all exams' scores grouped by examId
+    const statsMap = await getAllScores(userEmail);
+    return NextResponse.json({ statsMap });
+  }
+
   const stats = await getScores(userEmail, examId);
   return NextResponse.json(stats);
 }

@@ -1,4 +1,5 @@
-import type { CategoryStat, Choice, ExamMeta, Question, QuestionHistoryEntry, QuizStats, SessionRecord } from "./types";
+import type { CategoryStat, Choice, ExamMeta, ExamSnapshot, Question, QuestionHistoryEntry, QuizStats, SessionRecord, UserSettings } from "./types";
+import { DEFAULT_USER_SETTINGS } from "./types";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 
 // Minimal D1 type stub – replaced by @cloudflare/workers-types after npm install
@@ -566,6 +567,156 @@ export async function getDueCount(userEmail: string, examId: string): Promise<nu
     .first<{ cnt: number }>();
 
   return row?.cnt ?? 0;
+}
+
+// ── All scores (cross-exam) ─────────────────────────────────────────────────
+
+export async function getAllScores(userEmail: string): Promise<Record<string, QuizStats>> {
+  const db = getDB();
+  if (!db) return {};
+
+  const result = await db
+    .prepare("SELECT question_id, last_correct FROM scores WHERE user_email = ?")
+    .bind(userEmail)
+    .all<{ question_id: string; last_correct: number }>();
+
+  const statsMap: Record<string, QuizStats> = {};
+  for (const row of result.results ?? []) {
+    const sep = row.question_id.indexOf("__");
+    if (sep < 0) continue;
+    const examId = row.question_id.slice(0, sep);
+    const num = row.question_id.slice(sep + 2);
+    if (!statsMap[examId]) statsMap[examId] = {};
+    statsMap[examId][num] = row.last_correct as 0 | 1;
+  }
+  return statsMap;
+}
+
+// ── User settings ───────────────────────────────────────────────────────────
+
+export async function getAllUserSettings(userEmail: string): Promise<UserSettings> {
+  const db = getDB();
+  if (!db) return DEFAULT_USER_SETTINGS;
+
+  const result = await db
+    .prepare("SELECT key, value FROM user_settings WHERE user_email = ?")
+    .bind(userEmail)
+    .all<{ key: string; value: string }>();
+
+  if (!result.results?.length) return DEFAULT_USER_SETTINGS;
+
+  const raw: Partial<UserSettings> = {};
+  for (const row of result.results) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (raw as any)[row.key] = row.key === "dailyGoal" ? Number(row.value) : row.value;
+  }
+  const merged: UserSettings = { ...DEFAULT_USER_SETTINGS, ...raw };
+  if (!merged.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;
+  if (!merged.aiRefinePrompt) merged.aiRefinePrompt = DEFAULT_USER_SETTINGS.aiRefinePrompt;
+  return merged;
+}
+
+export async function setUserSettings(
+  userEmail: string,
+  settings: Partial<UserSettings>
+): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+
+  for (const [key, value] of Object.entries(settings)) {
+    await db
+      .prepare(
+        `INSERT INTO user_settings (user_email, key, value, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(user_email, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+      .bind(userEmail, key, String(value))
+      .run();
+  }
+}
+
+// ── User snapshots ──────────────────────────────────────────────────────────
+
+export async function getSnapshots(
+  userEmail: string,
+  examId?: string
+): Promise<Record<string, ExamSnapshot[]>> {
+  const db = getDB();
+  if (!db) return {};
+
+  const result = examId
+    ? await db
+        .prepare(
+          "SELECT exam_id, ts, correct, total, accuracy FROM user_snapshots WHERE user_email = ? AND exam_id = ? ORDER BY ts ASC"
+        )
+        .bind(userEmail, examId)
+        .all<{ exam_id: string; ts: number; correct: number; total: number; accuracy: number }>()
+    : await db
+        .prepare(
+          "SELECT exam_id, ts, correct, total, accuracy FROM user_snapshots WHERE user_email = ? ORDER BY ts ASC"
+        )
+        .bind(userEmail)
+        .all<{ exam_id: string; ts: number; correct: number; total: number; accuracy: number }>();
+
+  const map: Record<string, ExamSnapshot[]> = {};
+  for (const row of result.results ?? []) {
+    if (!map[row.exam_id]) map[row.exam_id] = [];
+    map[row.exam_id].push({ ts: row.ts, correct: row.correct, total: row.total, accuracy: row.accuracy });
+  }
+  return map;
+}
+
+export async function saveSnapshot(
+  userEmail: string,
+  examId: string,
+  ts: number,
+  correct: number,
+  total: number,
+  accuracy: number
+): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+
+  // Check if there's already a snapshot from today (by UTC date)
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayTs = todayStart.getTime();
+  const tomorrowTs = todayTs + 86400000;
+
+  const existing = await db
+    .prepare(
+      "SELECT id FROM user_snapshots WHERE user_email = ? AND exam_id = ? AND ts >= ? AND ts < ?"
+    )
+    .bind(userEmail, examId, todayTs, tomorrowTs)
+    .first<{ id: number }>();
+
+  if (existing) {
+    await db
+      .prepare(
+        "UPDATE user_snapshots SET ts = ?, correct = ?, total = ?, accuracy = ? WHERE id = ?"
+      )
+      .bind(ts, correct, total, accuracy, existing.id)
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO user_snapshots (user_email, exam_id, ts, correct, total, accuracy)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(userEmail, examId, ts, correct, total, accuracy)
+      .run();
+
+    // Keep only last 60 snapshots per exam
+    await db
+      .prepare(
+        `DELETE FROM user_snapshots WHERE user_email = ? AND exam_id = ? AND id NOT IN (
+           SELECT id FROM user_snapshots WHERE user_email = ? AND exam_id = ?
+           ORDER BY ts DESC LIMIT 60
+         )`
+      )
+      .bind(userEmail, examId, userEmail, examId)
+      .run();
+  }
 }
 
 // ── App settings ───────────────────────────────────────────────────────────
