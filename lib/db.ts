@@ -71,6 +71,20 @@ export async function getExamList(): Promise<ExamMeta[]> {
   }));
 }
 
+export async function updateExamMeta(
+  examId: string,
+  fields: { name?: string; language?: "ja" | "en" }
+): Promise<void> {
+  const db = getDB();
+  if (!db) return; // CSV mode: no-op
+  if (fields.name !== undefined) {
+    await db.prepare("UPDATE exams SET name = ? WHERE id = ?").bind(fields.name, examId).run();
+  }
+  if (fields.language !== undefined) {
+    await db.prepare("UPDATE exams SET lang = ? WHERE id = ?").bind(fields.language, examId).run();
+  }
+}
+
 // ── Questions ──────────────────────────────────────────────────────────────
 
 export async function getQuestions(examId: string): Promise<Question[]> {
