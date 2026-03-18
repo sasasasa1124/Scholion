@@ -80,10 +80,11 @@ Currently recorded answer(s): {answers}
 
 Please verify the correct answer(s) using your knowledge and web search if needed.
 Respond ONLY with a JSON object (no markdown, no code fences) with exactly these keys:
-{ "explanation": "...", "answers": ["A"], "reasoning": "..." }
+{ "explanation": "...", "answers": ["A"], "reasoning": "...", "sources": ["https://..."] }
 - explanation: concise explanation of why the correct answer(s) are correct
 - answers: array of correct choice labels (e.g. ["A"] or ["A", "C"])
-- reasoning: brief reasoning for why you chose those answers`;
+- reasoning: brief reasoning for why you chose those answers
+- sources: array of 1–3 URLs that directly support the answer (official docs, Trailhead, etc.). Use [] if none found.`;
 
 export const DEFAULT_REFINE_PROMPT = `You are an expert editor for Salesforce/MuleSoft certification exam questions.
 Your task is to fix ONLY typos, grammatical errors, spelling mistakes, and awkward phrasing in the question text and answer choices.

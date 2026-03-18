@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe, Home,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
@@ -496,6 +496,13 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           >
             <ArrowLeft size={14} />
           </button>
+          <button
+            onClick={() => { doCompleteSession(); router.push("/"); }}
+            className="p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+            title="Home"
+          >
+            <Home size={13} />
+          </button>
           <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
             <ModeIcon size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">{examName}</span>
@@ -714,7 +721,13 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
 
       {/* ── Footer ── */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 pt-3 pb-2.5">
-        <div className="flex items-end gap-px mb-2.5">
+        {/* Number labels above — px-2 matches slider thumb inset (8px = thumbRadius) */}
+        <div className="flex justify-between text-xs text-gray-300 tabular-nums px-2 mb-1">
+          <span>1</span>
+          <span>{filteredQuestions.length}</span>
+        </div>
+        {/* Progress blocks — px-2 aligns with slider track */}
+        <div className="flex items-end gap-px mb-2 px-2">
           {filteredQuestions.map((fq, i) => {
             const s = stats[String(fq.id)];
             const isCurrent = i === currentIndex;
@@ -735,19 +748,18 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             );
           })}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-300 tabular-nums w-4 text-right shrink-0">1</span>
-          <input
-            type="range"
-            min={0}
-            max={filteredQuestions.length - 1}
-            value={currentIndex}
-            onChange={(e) => { const next = Number(e.target.value); setDirection(next > currentIndex ? "forward" : "backward"); setCurrentIndex(next); }}
-            className="quiz-slider flex-1"
-            style={{ "--fill": sliderPct } as React.CSSProperties}
-          />
-          <span className="text-xs text-gray-300 tabular-nums w-4 shrink-0">{filteredQuestions.length}</span>
-          <span className="text-xs text-gray-300 ml-2 shrink-0 hidden lg:block">
+        {/* Slider — full width; browser insets track by thumbRadius (8px) matching px-2 above */}
+        <input
+          type="range"
+          min={0}
+          max={filteredQuestions.length - 1}
+          value={currentIndex}
+          onChange={(e) => { const next = Number(e.target.value); setDirection(next > currentIndex ? "forward" : "backward"); setCurrentIndex(next); }}
+          className="quiz-slider w-full"
+          style={{ "--fill": sliderPct } as React.CSSProperties}
+        />
+        <div className="text-right mt-1 hidden lg:block">
+          <span className="text-xs text-gray-300">
             {mode === "review"
               ? (revealed ? "← → navigate" : "→ knew  ⌫ didn't  ← prev")
               : "1–9 select  Enter submit/next  ←→ nav"}

@@ -91,16 +91,16 @@ export default function AiExplainPopup({ loading, result, error, adopting, onAdo
                   Sources
                 </p>
                 <div className="flex flex-col gap-1">
-                  {result.sources.map((s) => (
+                  {result.sources.map((url) => (
                     <a
-                      key={s.uri}
-                      href={s.uri}
+                      key={url}
+                      href={url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs text-violet-500 hover:text-violet-700 hover:underline"
                     >
                       <ExternalLink size={10} className="shrink-0" />
-                      <span className="truncate">{s.title}</span>
+                      <span className="truncate">{url}</span>
                     </a>
                   ))}
                 </div>
