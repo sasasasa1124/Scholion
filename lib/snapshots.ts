@@ -37,7 +37,7 @@ export function recordDailySnapshot(
 
   const last = list[list.length - 1];
   if (last && new Date(last.ts).toDateString() === today) {
-    list[list.length - 1] = snap; // overwrite today's entry
+    list[list.length - 1] = snap;
   } else {
     list.push(snap);
     if (list.length > 60) list.splice(0, list.length - 60);
@@ -45,4 +45,29 @@ export function recordDailySnapshot(
 
   all[examId] = list;
   saveAllSnapshots(all);
+
+  // Fire-and-forget save to server
+  fetch("/api/snapshots", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ examId, ts: snap.ts, correct: snap.correct, total: snap.total, accuracy: snap.accuracy }),
+  }).catch(() => {});
+}
+
+/** Load snapshots from server (API), merged with localStorage (API wins). */
+export async function loadServerSnapshots(examId?: string): Promise<Record<string, ExamSnapshot[]>> {
+  try {
+    const url = examId
+      ? `/api/snapshots?examId=${encodeURIComponent(examId)}`
+      : "/api/snapshots";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("fetch failed");
+    const { snapshots } = await res.json() as { snapshots: Record<string, ExamSnapshot[]> };
+    // Merge with localStorage (server wins)
+    const local = loadAllSnapshots();
+    const merged: Record<string, ExamSnapshot[]> = { ...local, ...snapshots };
+    return merged;
+  } catch {
+    return loadAllSnapshots();
+  }
 }
