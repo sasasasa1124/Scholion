@@ -137,13 +137,18 @@ export async function POST(req: NextRequest) {
       const answers = parseAnswers(row["answer"] ?? row["answers"] ?? "");
       const explanation = esc(row["explanation"] ?? "");
       const source = esc(row["source"] ?? "");
+      const rawExpSources = row["explanation_sources"] ?? "";
+      const explanationSources = rawExpSources
+        ? rawExpSources.split(/\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean)
+        : [];
       const isDuplicate = !!(row["duplicate"] ?? "").trim() ? 1 : 0;
       const optionsJson = esc(JSON.stringify(choices));
       const answersJson = esc(JSON.stringify(answers));
+      const expSourcesJson = esc(JSON.stringify(explanationSources));
 
       await db.prepare(
-        `INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, is_duplicate) ` +
-        `VALUES ('${id}', '${esc(appendTo)}', ${num}, '${questionText}', '${optionsJson}', '${answersJson}', '${explanation}', '${source}', ${isDuplicate})`
+        `INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, is_duplicate, created_at, added_at) ` +
+        `VALUES ('${id}', '${esc(appendTo)}', ${num}, '${questionText}', '${optionsJson}', '${answersJson}', '${explanation}', '${source}', '${expSourcesJson}', ${isDuplicate}, datetime('now'), datetime('now'))`
       ).run();
     }
 
@@ -182,13 +187,18 @@ export async function POST(req: NextRequest) {
       const answers = parseAnswers(row["answer"] ?? row["answers"] ?? "");
       const explanation = esc(row["explanation"] ?? "");
       const source = esc(row["source"] ?? "");
+      const rawExpSources = row["explanation_sources"] ?? "";
+      const explanationSources = rawExpSources
+        ? rawExpSources.split(/\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean)
+        : [];
       const isDuplicate = !!(row["duplicate"] ?? "").trim() ? 1 : 0;
       const optionsJson = esc(JSON.stringify(choices));
       const answersJson = esc(JSON.stringify(answers));
+      const expSourcesJson = esc(JSON.stringify(explanationSources));
 
       await db.prepare(
-        `INSERT OR REPLACE INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, is_duplicate) ` +
-        `VALUES ('${id}', '${esc(examId)}', ${num}, '${questionText}', '${optionsJson}', '${answersJson}', '${explanation}', '${source}', ${isDuplicate})`
+        `INSERT OR REPLACE INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, is_duplicate, created_at, added_at) ` +
+        `VALUES ('${id}', '${esc(examId)}', ${num}, '${questionText}', '${optionsJson}', '${answersJson}', '${explanation}', '${source}', '${expSourcesJson}', ${isDuplicate}, datetime('now'), datetime('now'))`
       ).run();
     }
   }

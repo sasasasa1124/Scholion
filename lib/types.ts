@@ -10,13 +10,16 @@ export interface Question {
   choices: Choice[];
   answers: string[]; // ["A", "C", "E"]
   explanation: string;
-  source: string;
+  source: string;            // question source (website/reference)
+  explanationSources: string[]; // explanation/answer reference URLs (multiple)
   isDuplicate: boolean;
   choiceCount: number; // metadata for validation
   isMultiple: boolean; // true if answers.length > 1
   version: number;
   category: string | null;
   createdBy: string;
+  createdAt: string; // when the question was authored (ISO datetime)
+  addedAt: string;   // when the question was added to the DB (ISO datetime)
 }
 
 export interface ExamMeta {

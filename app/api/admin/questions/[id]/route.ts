@@ -17,6 +17,7 @@ export async function PUT(
     answers: string[];
     explanation: string;
     source: string;
+    explanation_sources: string[];
     change_reason: string;
   };
 
@@ -27,7 +28,12 @@ export async function PUT(
   const userEmail = await getUserEmail();
   await updateQuestion(
     id,
-    { ...body, source: body.source ?? "", change_reason: body.change_reason ?? "manual edit" },
+    {
+      ...body,
+      source: body.source ?? "",
+      explanation_sources: body.explanation_sources ?? [],
+      change_reason: body.change_reason ?? "manual edit",
+    },
     userEmail
   );
 

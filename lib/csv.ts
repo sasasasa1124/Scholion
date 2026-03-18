@@ -111,6 +111,10 @@ export function getQuestions(examId: string): Question[] {
     const num = parseInt(row["#"] ?? "0", 10);
     const choices = parseChoices(row["choices"] ?? "");
     const answers = parseAnswers(row["answer"] ?? row["answers"] ?? "");
+    const rawExpSources = row["explanation_sources"] ?? "";
+    const explanationSources = rawExpSources
+      ? rawExpSources.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
+      : [];
     return {
       id: num,
       dbId: `${examId}__${num}`,
@@ -119,12 +123,15 @@ export function getQuestions(examId: string): Question[] {
       answers,
       explanation: row["explanation"] ?? "",
       source: row["source"] ?? "",
+      explanationSources,
       isDuplicate: !!(row["duplicate"] ?? "").trim(),
       choiceCount: choices.length,
       isMultiple: answers.length > 1,
       version: 1,
       category: null,
       createdBy: "",
+      createdAt: row["created_at"] ?? "",
+      addedAt: row["added_at"] ?? "",
     };
   });
 }
