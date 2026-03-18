@@ -116,7 +116,12 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
           {(question.source || (question.explanationSources && question.explanationSources.length > 0)) && (
             <div className="space-y-1">
               {question.source && (
-                <p className="text-xs text-gray-400">Question source: {question.source}</p>
+                <p className="text-xs text-gray-400">
+                  Question source:{" "}
+                  <a href={question.source} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-500 underline break-all">
+                    {question.source}
+                  </a>
+                </p>
               )}
               {question.explanationSources && question.explanationSources.length > 0 && (
                 <div>

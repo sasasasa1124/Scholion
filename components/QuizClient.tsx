@@ -766,9 +766,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                               dangerouslySetInnerHTML={{ __html: q.question }}
                             />
                             {q.source && (
-                              <p className="text-[10px] text-gray-300 mt-2 truncate" title={q.source}>
+                              <a href={q.source} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-300 hover:text-blue-400 mt-2 truncate block" title={q.source}>
                                 Source: {q.source}
-                              </p>
+                              </a>
                             )}
                           </div>
                           <div className="space-y-2">
