@@ -1,4 +1,4 @@
-import type { CategoryStat, Choice, ExamMeta, ExamSnapshot, Question, QuestionHistoryEntry, QuizStats, SessionRecord, UserSettings } from "./types";
+import type { CategoryStat, Choice, ExamMeta, ExamSnapshot, Question, QuestionHistoryEntry, QuizStats, SessionRecord, Suggestion, UserSettings } from "./types";
 import { DEFAULT_USER_SETTINGS } from "./types";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 
@@ -25,28 +25,24 @@ export function getDB(): D1Database | null {
 }
 
 // ── CSV fallback (local dev only) ─────────────────────────────────────────
-// In Node.js context (Next.js dev server components), import lib/csv directly.
-// In edge context, process.cwd is not a function — fall back to empty arrays
-// (edge routes with D1 unavailable return [] anyway in production).
+// Edge runtime can't use fs/process.cwd(), so we call a Node.js API route
+// that reads CSV files. In production on Cloudflare, getDB() returns D1 so
+// these functions are never reached.
+
+const LOCAL_BASE = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 
 async function csvExamList(): Promise<ExamMeta[]> {
   try {
-    if (typeof process !== "undefined" && typeof process.cwd === "function") {
-      const { getExamList } = await import("@/lib/csv");
-      return getExamList();
-    }
-  } catch { /* fall through */ }
-  return [];
+    const res = await fetch(`${LOCAL_BASE}/api/local-exams`);
+    return res.json() as Promise<ExamMeta[]>;
+  } catch { return []; }
 }
 
 async function csvQuestions(examId: string): Promise<Question[]> {
   try {
-    if (typeof process !== "undefined" && typeof process.cwd === "function") {
-      const { getQuestions } = await import("@/lib/csv");
-      return getQuestions(examId);
-    }
-  } catch { /* fall through */ }
-  return [];
+    const res = await fetch(`${LOCAL_BASE}/api/local-questions/${encodeURIComponent(examId)}`);
+    return res.json() as Promise<Question[]>;
+  } catch { return []; }
 }
 
 // ── Exam list ──────────────────────────────────────────────────────────────
@@ -820,4 +816,64 @@ export async function setSetting(key: string, value: string): Promise<void> {
     )
     .bind(key, value)
     .run();
+}
+
+// ── Suggestions ────────────────────────────────────────────────────────────
+
+function rowToSuggestion(row: Record<string, unknown>): Suggestion {
+  return {
+    id: row.id as number,
+    questionId: row.question_id as string,
+    type: row.type as "ai" | "manual",
+    suggestedAnswers: row.suggested_answers ? JSON.parse(row.suggested_answers as string) : null,
+    suggestedExplanation: (row.suggested_explanation as string) ?? null,
+    aiModel: (row.ai_model as string) ?? null,
+    comment: (row.comment as string) ?? null,
+    createdBy: row.created_by as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export async function getSuggestions(questionId: string): Promise<Suggestion[]> {
+  const db = getDB();
+  if (!db) return [];
+  const rows = await db
+    .prepare("SELECT * FROM suggestions WHERE question_id = ? ORDER BY created_at DESC")
+    .bind(questionId)
+    .all<Record<string, unknown>>();
+  return (rows.results ?? []).map(rowToSuggestion);
+}
+
+export async function createSuggestion(
+  questionId: string,
+  data: {
+    type: "ai" | "manual";
+    suggestedAnswers: string[] | null;
+    suggestedExplanation: string | null;
+    aiModel: string | null;
+    comment: string | null;
+  },
+  createdBy: string
+): Promise<Suggestion> {
+  const db = getDB();
+  if (!db) throw new Error("DB not available");
+  await db
+    .prepare(
+      "INSERT INTO suggestions (question_id, type, suggested_answers, suggested_explanation, ai_model, comment, created_by) VALUES (?,?,?,?,?,?,?)"
+    )
+    .bind(
+      questionId,
+      data.type,
+      data.suggestedAnswers ? JSON.stringify(data.suggestedAnswers) : null,
+      data.suggestedExplanation ?? null,
+      data.aiModel ?? null,
+      data.comment ?? null,
+      createdBy
+    )
+    .run();
+  const row = await db
+    .prepare("SELECT * FROM suggestions WHERE rowid = last_insert_rowid()")
+    .first<Record<string, unknown>>();
+  if (!row) throw new Error("Failed to retrieve created suggestion");
+  return rowToSuggestion(row);
 }

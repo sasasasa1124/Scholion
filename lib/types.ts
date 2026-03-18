@@ -107,6 +107,18 @@ Respond ONLY with a JSON object (no markdown, no code fences) with exactly these
 - choices: array of corrected choices in the same order (identical to input if no errors found)
 - changesSummary: a brief human-readable summary of what was changed, or empty string if nothing changed`;
 
+export interface Suggestion {
+  id: number;
+  questionId: string;
+  type: "ai" | "manual";
+  suggestedAnswers: string[] | null;
+  suggestedExplanation: string | null;
+  aiModel: string | null;
+  comment: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface SessionRecord {
   id: string;
   userEmail: string;
