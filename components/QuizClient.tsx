@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe, Home,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 import QuizQuestion from "./QuizQuestion";
@@ -19,6 +20,13 @@ import AnswerRevealModal from "./AnswerRevealModal";
 import KeyboardHintToast from "./KeyboardHintToast";
 import { useSettings } from "@/lib/settings-context";
 import { recordDailySnapshot } from "@/lib/snapshots";
+
+const LANG_OPTIONS: { value: Locale; label: string }[] = [
+  { value: "en", label: "EN" },
+  { value: "ja", label: "日本語" },
+  { value: "zh", label: "中文" },
+  { value: "ko", label: "한국어" },
+];
 
 interface Props {
   questions: Question[];
@@ -82,9 +90,20 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const touchStartY = useRef<number | null>(null);
   const touchZone = useRef<"top" | "bottom" | null>(null);
 
-  const { settings } = useSettings();
+  const { settings, updateSettings, t } = useSettings();
+  const [langOpen, setLangOpen] = useState(false);
+  const langRef = useRef<HTMLDivElement>(null);
 
   const backHref = `/exam/${examId}`;
+
+  // Close language dropdown on outside click
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
 
   // Create session on mount
   useEffect(() => {
@@ -477,6 +496,13 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           >
             <ArrowLeft size={14} />
           </button>
+          <button
+            onClick={() => { doCompleteSession(); router.push("/"); }}
+            className="p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+            title="Home"
+          >
+            <Home size={13} />
+          </button>
           <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
             <ModeIcon size={13} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">{examName}</span>
@@ -508,6 +534,28 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             <button onClick={() => setFilter("wrong")} disabled={wrongCount === 0} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${filter === "wrong" ? "bg-white text-rose-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
               <AlertCircle size={11} /> <span className="hidden sm:inline">Wrong</span> {wrongCount}
             </button>
+          </div>
+          <div ref={langRef} className="relative">
+            <button
+              onClick={() => setLangOpen((o) => !o)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Language"
+            >
+              <Globe size={13} />
+            </button>
+            {langOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[90px]">
+                {LANG_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { updateSettings({ language: opt.value }); setLangOpen(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${settings.language === opt.value ? "font-semibold text-blue-600" : "text-gray-700"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <Link
             href={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}`)}`}
@@ -554,9 +602,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                       <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                         <div className="max-w-3xl mx-auto w-full">
                           <div className="flex justify-end gap-2 mb-2">
-                            <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title="AI Refine">
+                            <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title={t("refine")}>
                               <Wand2 size={12} />
-                              AI Refine
+                              {t("refine")}
                             </button>
                             <button onClick={() => setEditingQuestion(q)} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors" title="Edit question">
                               <Pencil size={12} />
@@ -606,7 +654,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                 >
                   <div className="max-w-3xl mx-auto w-full h-full">
                     <div className="flex justify-end gap-2 mb-2">
-                      <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title="AI Refine">
+                      <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title={t("refine")}>
                         <Wand2 size={12} />
                         AI Refine
                       </button>
@@ -630,10 +678,11 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                       <button
                         onClick={handleSubmit}
                         disabled={selected.size === 0}
-                        className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-25 hover:bg-gray-700 transition-colors"
+                        className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-20 hover:bg-gray-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                       >
+                        <CheckCircle2 size={15} strokeWidth={2} />
                         Submit
-                        <span className="ml-2 text-xs font-normal opacity-40 hidden sm:inline">Enter</span>
+                        <kbd className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-md font-mono hidden sm:inline">↵</kbd>
                       </button>
                     )}
                     {submitted && (
@@ -673,7 +722,13 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
 
       {/* ── Footer ── */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 pt-3 pb-2.5">
-        <div className="flex items-end gap-px mb-2.5">
+        {/* Number labels above — px-2 matches slider thumb inset (8px = thumbRadius) */}
+        <div className="flex justify-between text-xs text-gray-300 tabular-nums px-2 mb-1">
+          <span>1</span>
+          <span>{filteredQuestions.length}</span>
+        </div>
+        {/* Progress blocks — px-2 aligns with slider track */}
+        <div className="flex items-end gap-px mb-2 px-2">
           {filteredQuestions.map((fq, i) => {
             const s = stats[String(fq.id)];
             const isCurrent = i === currentIndex;
@@ -694,19 +749,18 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             );
           })}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-300 tabular-nums w-4 text-right shrink-0">1</span>
-          <input
-            type="range"
-            min={0}
-            max={filteredQuestions.length - 1}
-            value={currentIndex}
-            onChange={(e) => { const next = Number(e.target.value); setDirection(next > currentIndex ? "forward" : "backward"); setCurrentIndex(next); }}
-            className="quiz-slider flex-1"
-            style={{ "--fill": sliderPct } as React.CSSProperties}
-          />
-          <span className="text-xs text-gray-300 tabular-nums w-4 shrink-0">{filteredQuestions.length}</span>
-          <span className="text-xs text-gray-300 ml-2 shrink-0 hidden lg:block">
+        {/* Slider — full width; browser insets track by thumbRadius (8px) matching px-2 above */}
+        <input
+          type="range"
+          min={0}
+          max={filteredQuestions.length - 1}
+          value={currentIndex}
+          onChange={(e) => { const next = Number(e.target.value); setDirection(next > currentIndex ? "forward" : "backward"); setCurrentIndex(next); }}
+          className="quiz-slider w-full"
+          style={{ "--fill": sliderPct } as React.CSSProperties}
+        />
+        <div className="text-right mt-1 hidden lg:block">
+          <span className="text-xs text-gray-300">
             {mode === "review"
               ? (revealed ? "← → navigate" : "→ knew  ⌫ didn't  ← prev")
               : "1–9 select  Enter submit/next  ←→ nav"}

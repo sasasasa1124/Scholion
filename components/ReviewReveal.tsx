@@ -2,6 +2,7 @@
 
 import { ChevronRight, CheckCircle2, Sparkles } from "lucide-react";
 import type { Question } from "@/lib/types";
+import { useSettings } from "@/lib/settings-context";
 
 interface Props {
   question: Question;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: Props) {
+  const { t } = useSettings();
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Scrollable content */}
@@ -20,7 +22,7 @@ export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: 
           {onAiExplain && (
             <button onClick={onAiExplain} className="flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 rounded-lg text-xs font-medium text-gray-400 hover:text-violet-500 hover:border-violet-200 transition-colors">
               <Sparkles size={11} />
-              AI Explain
+              {t("explain")}
             </button>
           )}
         </div>
