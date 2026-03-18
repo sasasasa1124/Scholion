@@ -8,7 +8,6 @@ import type { ExamMeta, QuizStats } from "@/lib/types";
 import { useSettings } from "@/lib/settings-context";
 import PageHeader from "./PageHeader";
 import OnboardingGuide from "./OnboardingGuide";
-import { useSettings } from "@/lib/settings-context";
 
 interface Props {
   exams: ExamMeta[];
