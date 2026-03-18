@@ -751,6 +751,37 @@ export async function saveSnapshot(
   }
 }
 
+// ── Study guides ────────────────────────────────────────────────────────────
+
+export async function getStudyGuide(
+  examId: string
+): Promise<{ markdown: string; generatedAt: string } | null> {
+  const db = getDB();
+  if (!db) return null;
+  const row = await db
+    .prepare("SELECT markdown, generated_at FROM study_guides WHERE exam_id = ?")
+    .bind(examId)
+    .first<{ markdown: string; generated_at: string }>();
+  if (!row) return null;
+  return { markdown: row.markdown, generatedAt: row.generated_at };
+}
+
+export async function upsertStudyGuide(
+  examId: string,
+  markdown: string
+): Promise<void> {
+  const db = getDB();
+  if (!db) return;
+  await db
+    .prepare(
+      `INSERT INTO study_guides (exam_id, markdown, generated_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(exam_id) DO UPDATE SET markdown = excluded.markdown, generated_at = excluded.generated_at`
+    )
+    .bind(examId, markdown)
+    .run();
+}
+
 // ── App settings ───────────────────────────────────────────────────────────
 
 export async function getSetting(key: string): Promise<string | null> {

@@ -3,6 +3,7 @@ import { getUserEmail } from "@/lib/user";
 import QuizClient from "@/components/QuizClient";
 import AnswersClient from "@/components/AnswersClient";
 import MockExamClient from "@/components/MockExamClient";
+import StudyGuideClient from "@/components/StudyGuideClient";
 import { notFound } from "next/navigation";
 
 // Salesforce exam configs: question count and time limit
@@ -34,7 +35,7 @@ export default async function QuizPage({ params, searchParams }: Props) {
   const { exam } = await params;
   const { mode = "quiz", category } = await searchParams;
 
-  if (mode !== "quiz" && mode !== "review" && mode !== "answers" && mode !== "mock") notFound();
+  if (mode !== "quiz" && mode !== "review" && mode !== "answers" && mode !== "mock" && mode !== "study-guide") notFound();
 
   const examId = decodeURIComponent(exam);
   const exams = await getExamList();
@@ -64,6 +65,16 @@ export default async function QuizPage({ params, searchParams }: Props) {
         timeLimitMinutes={config.minutes}
         sessionId={sessionId}
         userEmail={userEmail}
+      />
+    );
+  }
+
+  if (mode === "study-guide") {
+    return (
+      <StudyGuideClient
+        questions={questions}
+        examId={examId}
+        examName={meta.name}
       />
     );
   }

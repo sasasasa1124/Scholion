@@ -21,6 +21,7 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
     const ready = Date.now();
     const handler = (e: KeyboardEvent) => {
       if (Date.now() - ready < 150) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (!e.isComposing && (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "Enter" || e.key === "ArrowRight")) {
         e.preventDefault();
         onNext();

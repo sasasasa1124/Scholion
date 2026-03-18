@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Brain, BookOpen, BookOpenCheck,
   ChevronRight, AlertCircle, TrendingUp, Tag, Timer, History,
-  Pencil, Check, X,
+  Pencil, Check, X, Lightbulb,
 } from "lucide-react";
 import type { CategoryStat, ExamMeta } from "@/lib/types";
 import PageHeader from "./PageHeader";
@@ -374,6 +374,14 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats }: 
                 <Timer size={14} /> Mock Exam
               </Link>
             </div>
+
+            {/* Study Guide */}
+            <Link
+              href={`/quiz/${encodeURIComponent(exam.id)}?mode=study-guide`}
+              className="w-full h-10 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Lightbulb size={14} /> Study Guide
+            </Link>
 
           </div>
         </div>
