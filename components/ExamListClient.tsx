@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, RotateCcw, Upload, Download, Plus, X, User } from "lucide-react";
+import { ChevronRight, RotateCcw, Upload, Download, Plus, X, User, Search } from "lucide-react";
 import Link from "next/link";
 import type { ExamMeta, QuizStats } from "@/lib/types";
 import PageHeader from "./PageHeader";
@@ -53,6 +53,8 @@ export default function ExamListClient({ exams: initialExams }: Props) {
   const router = useRouter();
   const [exams, setExams] = useState<ExamMeta[]>(initialExams);
   const [statsMap, setStatsMap] = useState<Record<string, { pct: number | null; answered: number; total: number; wrongCount: number }>>({});
+  const [langFilter, setLangFilter] = useState<"all" | "ja" | "en">("all");
+  const [search, setSearch] = useState("");
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -142,6 +144,12 @@ export default function ExamListClient({ exams: initialExams }: Props) {
       : uploadStatus === "error" ? "Error"
       : null;
 
+  const filteredExams = exams.filter((e) => {
+    if (langFilter !== "all" && e.language !== langFilter) return false;
+    if (search.trim()) return e.name.toLowerCase().includes(search.trim().toLowerCase());
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col relative">
       <OnboardingGuide />
@@ -169,9 +177,50 @@ export default function ExamListClient({ exams: initialExams }: Props) {
         }
       />
 
-      <div className="flex-1 px-4 sm:px-8 py-6 overflow-y-auto">
+      {/* Controls: search + language filter */}
+      <div className="px-4 sm:px-8 pt-5 pb-3 flex items-center gap-3 max-w-3xl mx-auto w-full">
+        <div className="relative flex-1">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search exams..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-9 pl-8 pr-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-200"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 shrink-0">
+          {(["all", "ja", "en"] as const).map((lang) => (
+            <button
+              key={lang}
+              onClick={() => setLangFilter(lang)}
+              className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${
+                langFilter === lang ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {lang === "all" ? "All" : lang === "ja" ? "JP" : "EN"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 px-4 sm:px-8 pb-6 overflow-y-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
-          {exams.map((exam) => {
+          {filteredExams.length === 0 && (
+            <div className="col-span-full flex flex-col items-center gap-2 py-12 text-gray-300">
+              <Search size={24} strokeWidth={1.5} />
+              <p className="text-sm">No exams found</p>
+              <button onClick={() => { setSearch(""); setLangFilter("all"); }} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                Clear filters
+              </button>
+            </div>
+          )}
+          {filteredExams.map((exam) => {
             const s = statsMap[exam.id];
             const pct = s?.pct ?? null;
             return (
