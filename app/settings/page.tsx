@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Sparkles, Wand2, BrainCircuit, RefreshCw, Target } from "lucide-react";
+import { Check, Sparkles, Wand2, BrainCircuit, RefreshCw, Target, Volume2 } from "lucide-react";
 import { useSettings } from "@/lib/settings-context";
 import PageHeader from "@/components/PageHeader";
 import type { Locale } from "@/lib/i18n";
@@ -24,12 +24,16 @@ function SettingsInner() {
   const [aiPrompt, setAiPrompt] = useState(settings.aiPrompt);
   const [aiRefinePrompt, setAiRefinePrompt] = useState(settings.aiRefinePrompt);
   const [dailyGoal, setDailyGoal] = useState(settings.dailyGoal ?? 20);
+  const [audioMode, setAudioMode] = useState(settings.audioMode ?? false);
+  const [audioSpeed, setAudioSpeed] = useState(settings.audioSpeed ?? 1.0);
   const [saved, setSaved] = useState(false);
   const [geminiModel, setGeminiModel] = useState("");
+  const [ttsModel, setTtsModel] = useState("");
   const [modelList, setModelList] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
   const modelBeforeFocus = useRef<string>("");
+  const ttsModelBeforeFocus = useRef<string>("");
 
   // Sync local state when settings load from localStorage
   useEffect(() => {
@@ -37,13 +41,19 @@ function SettingsInner() {
     setAiPrompt(settings.aiPrompt);
     setAiRefinePrompt(settings.aiRefinePrompt);
     setDailyGoal(settings.dailyGoal ?? 20);
-  }, [settings.language, settings.aiPrompt, settings.aiRefinePrompt]);
+    setAudioMode(settings.audioMode ?? false);
+    setAudioSpeed(settings.audioSpeed ?? 1.0);
+  }, [settings.language, settings.aiPrompt, settings.aiRefinePrompt, settings.audioMode, settings.audioSpeed]);
 
-  // Load current gemini model from DB
+  // Load current gemini model and tts model from DB
   useEffect(() => {
     fetch("/api/app-settings?key=gemini_model")
       .then((r) => r.json() as Promise<{ value: string | null }>)
       .then(({ value }) => { if (value) setGeminiModel(value); })
+      .catch(() => {});
+    fetch("/api/app-settings?key=tts_model")
+      .then((r) => r.json() as Promise<{ value: string | null }>)
+      .then(({ value }) => { if (value) setTtsModel(value); })
       .catch(() => {});
   }, []);
 
@@ -63,14 +73,27 @@ function SettingsInner() {
   }
 
   async function handleSave() {
-    updateSettings({ language, aiPrompt, aiRefinePrompt, dailyGoal });
+    updateSettings({ language, aiPrompt, aiRefinePrompt, dailyGoal, audioMode, audioSpeed });
+    const saves: Promise<unknown>[] = [];
     if (geminiModel) {
-      await fetch("/api/app-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "gemini_model", value: geminiModel }),
-      }).catch(() => {});
+      saves.push(
+        fetch("/api/app-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "gemini_model", value: geminiModel }),
+        }).catch(() => {}),
+      );
     }
+    if (ttsModel) {
+      saves.push(
+        fetch("/api/app-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "tts_model", value: ttsModel }),
+        }).catch(() => {}),
+      );
+    }
+    await Promise.all(saves);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -208,6 +231,66 @@ function SettingsInner() {
               ＋
             </button>
             <span className="text-xs text-gray-400 ml-1">questions / day</span>
+          </div>
+        </section>
+
+        {/* Audio Mode */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+            <Volume2 size={11} className="text-sky-400" />
+            Audio Mode
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">Read questions and answers aloud (Review &amp; Answers mode)</p>
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden divide-y divide-gray-100">
+            {/* Toggle */}
+            <button
+              type="button"
+              onClick={() => setAudioMode((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors text-left"
+            >
+              <span className="text-sm font-medium text-gray-900">Read aloud automatically</span>
+              <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${audioMode ? "bg-sky-500" : "bg-gray-200"}`}>
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${audioMode ? "translate-x-4" : "translate-x-0"}`} />
+              </span>
+            </button>
+            {/* Speed slider */}
+            <div className={`px-4 py-3.5 transition-opacity ${audioMode ? "" : "opacity-40 pointer-events-none"}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-900">Speed</span>
+                <span className="text-sm font-semibold text-gray-700 tabular-nums w-10 text-right">{audioSpeed}x</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 shrink-0">0.5x</span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={4.0}
+                  step={0.25}
+                  value={audioSpeed}
+                  onChange={(e) => setAudioSpeed(Number(e.target.value))}
+                  className="quiz-slider flex-1"
+                  style={{ "--fill": `${((audioSpeed - 0.5) / 3.5) * 100}%` } as React.CSSProperties}
+                />
+                <span className="text-xs text-gray-400 shrink-0">4x</span>
+              </div>
+            </div>
+            {/* TTS Model */}
+            <div className={`px-4 py-3.5 transition-opacity ${audioMode ? "" : "opacity-40 pointer-events-none"}`}>
+              <p className="text-xs text-gray-400 mb-2">TTS Model</p>
+              <input
+                list="tts-model-list"
+                value={ttsModel}
+                onChange={(e) => setTtsModel(e.target.value)}
+                onFocus={() => { ttsModelBeforeFocus.current = ttsModel; setTtsModel(""); }}
+                onBlur={() => { if (!ttsModel) setTtsModel(ttsModelBeforeFocus.current); }}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                placeholder="gemini-2.5-flash-preview-tts"
+              />
+              <datalist id="tts-model-list">
+                <option value="gemini-2.5-flash-preview-tts" />
+                <option value="gemini-2.5-pro-preview-tts" />
+              </datalist>
+            </div>
           </div>
         </section>
 

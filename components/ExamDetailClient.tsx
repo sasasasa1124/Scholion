@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Brain, BookOpen, BookOpenCheck,
   ChevronRight, AlertCircle, TrendingUp, Tag, Timer, History,
+  Pencil, Check, X,
 } from "lucide-react";
 import type { CategoryStat, ExamMeta } from "@/lib/types";
 import PageHeader from "./PageHeader";
@@ -33,6 +34,37 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats }: 
   const [selectedMode, setSelectedMode] = useState<"quiz" | "review">("quiz");
   const [selectedScope, setSelectedScope] = useState<"all" | "continue" | "wrong">("all");
   const [hasContinue, setHasContinue] = useState(false);
+
+  // Exam metadata editing
+  const [examName, setExamName] = useState(exam.name);
+  const [examLang, setExamLang] = useState<"ja" | "en">(exam.language);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [metaSaving, setMetaSaving] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingMeta) nameInputRef.current?.focus();
+  }, [editingMeta]);
+
+  async function saveExamMeta() {
+    setMetaSaving(true);
+    try {
+      await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: examName, language: examLang }),
+      });
+      setEditingMeta(false);
+    } finally {
+      setMetaSaving(false);
+    }
+  }
+
+  function cancelEditMeta() {
+    setExamName(exam.name);
+    setExamLang(exam.language);
+    setEditingMeta(false);
+  }
 
   // Check for saved position in localStorage
   useEffect(() => {
@@ -93,7 +125,59 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats }: 
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
-      <PageHeader back={{ href: "/" }} title={exam.name} />
+      <PageHeader
+        back={{ href: "/" }}
+        title={examName}
+        right={
+          !editingMeta ? (
+            <button
+              onClick={() => setEditingMeta(true)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Edit exam"
+            >
+              <Pencil size={13} />
+            </button>
+          ) : null
+        }
+      />
+      {editingMeta && (
+        <div className="bg-white border-b border-gray-200 px-4 sm:px-8 py-3">
+          <div className="max-w-2xl mx-auto flex items-center gap-2">
+            <input
+              ref={nameInputRef}
+              value={examName}
+              onChange={(e) => setExamName(e.target.value)}
+              className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+              placeholder="Exam name"
+              onKeyDown={(e) => { if (e.key === "Enter") saveExamMeta(); if (e.key === "Escape") cancelEditMeta(); }}
+            />
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              {(["ja", "en"] as const).map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setExamLang(lang)}
+                  className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${examLang === lang ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                  {lang === "ja" ? "JP" : "EN"}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={saveExamMeta}
+              disabled={metaSaving || !examName.trim()}
+              className="p-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-40 transition-colors"
+            >
+              <Check size={13} />
+            </button>
+            <button
+              onClick={cancelEditMeta}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className={`flex-1 px-4 sm:px-8 py-6 max-w-2xl mx-auto w-full transition-opacity duration-300 ${statsLoading ? "opacity-60" : "opacity-100"}`}>
 
