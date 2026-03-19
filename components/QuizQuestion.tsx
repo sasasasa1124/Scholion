@@ -46,6 +46,11 @@ export default function QuizQuestion({
           className="text-gray-900 text-sm lg:text-base leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
           dangerouslySetInnerHTML={{ __html: question.question }}
         />
+        {question.source && (
+          <a href={question.source} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-300 hover:text-blue-400 mt-2 truncate block" title={question.source}>
+            Source: {question.source}
+          </a>
+        )}
       </div>
 
       {/* Choices — scrollable if many */}

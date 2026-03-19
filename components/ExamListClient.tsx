@@ -4,25 +4,13 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, RotateCcw, Upload, Download, Plus, X, User, Search, Flame } from "lucide-react";
 import Link from "next/link";
-import type { ExamMeta, QuizStats } from "@/lib/types";
+import type { ExamMeta } from "@/lib/types";
 import { useSettings } from "@/lib/settings-context";
 import PageHeader from "./PageHeader";
 import OnboardingGuide from "./OnboardingGuide";
-import { useSettings } from "@/lib/settings-context";
 
 interface Props {
   exams: ExamMeta[];
-}
-
-function loadStats(examId: string): QuizStats {
-  try {
-    const raw = JSON.parse(localStorage.getItem(`quiz-stats-${examId}`) ?? "{}");
-    const out: QuizStats = {};
-    for (const [k, v] of Object.entries(raw)) {
-      if (v === 0 || v === 1) out[k] = v as 0 | 1;
-    }
-    return out;
-  } catch { return {}; }
 }
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
@@ -57,10 +45,18 @@ export default function ExamListClient({ exams: initialExams }: Props) {
   const { settings, updateSettings } = useSettings();
   const [exams, setExams] = useState<ExamMeta[]>(initialExams);
   const [statsMap, setStatsMap] = useState<Record<string, { pct: number | null; answered: number; total: number; wrongCount: number }>>({});
-  const langFilter: "ja" | "en" | "all" =
-    settings.language === "ja" ? "ja"
-    : settings.language === "en" ? "en"
-    : "all";
+  const availableLangs = Array.from(new Set(initialExams.map((e) => e.language)));
+  const langOptions = (
+    [
+      { value: "en" as const, label: "EN" },
+      { value: "ja" as const, label: "JA" },
+      { value: "zh" as const, label: "ZH" },
+      { value: "ko" as const, label: "KO" },
+    ] as { value: "en" | "ja" | "zh" | "ko"; label: string }[]
+  ).filter((opt) => availableLangs.includes(opt.value));
+  const langFilter = availableLangs.includes(settings.language)
+    ? settings.language
+    : (availableLangs[0] ?? "en");
   const [search, setSearch] = useState("");
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
@@ -70,6 +66,10 @@ export default function ExamListClient({ exams: initialExams }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [dailyProgress, setDailyProgress] = useState<{ todayCount: number; streak: number } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [translateSourceId, setTranslateSourceId] = useState<string | null>(null);
+  const [translateStatus, setTranslateStatus] = useState<"idle" | "translating" | "done" | "error">("idle");
+  const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const dragCountRef = useRef(0);
 
@@ -81,20 +81,45 @@ export default function ExamListClient({ exams: initialExams }: Props) {
   }, []);
 
   useEffect(() => {
-    const map: typeof statsMap = {};
-    for (const exam of exams) {
-      const stats = loadStats(exam.id);
-      const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
-      const correct = keys.filter((k) => stats[k] === 1).length;
-      const wrongCount = keys.filter((k) => stats[k] === 0).length;
-      map[exam.id] = {
-        pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
-        answered: keys.length,
-        total: exam.questionCount,
-        wrongCount,
-      };
-    }
-    setStatsMap(map);
+    fetch("/api/scores")
+      .then((r) => r.json() as Promise<{ statsMap: Record<string, Record<string, 0 | 1>> }>)
+      .then(({ statsMap: remote }) => {
+        const map: typeof statsMap = {};
+        for (const exam of exams) {
+          const stats = remote[exam.id] ?? {};
+          const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
+          const correct = keys.filter((k) => stats[k] === 1).length;
+          const wrongCount = keys.filter((k) => stats[k] === 0).length;
+          map[exam.id] = {
+            pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
+            answered: keys.length,
+            total: exam.questionCount,
+            wrongCount,
+          };
+        }
+        setStatsMap(map);
+        setStatsLoading(false);
+      })
+      .catch(() => {
+        // Fallback: localStorage
+        const map: typeof statsMap = {};
+        for (const exam of exams) {
+          try {
+            const raw = JSON.parse(localStorage.getItem(`quiz-stats-${exam.id}`) ?? "{}");
+            const keys = Object.keys(raw).filter((k) => raw[k] === 0 || raw[k] === 1);
+            const correct = keys.filter((k) => raw[k] === 1).length;
+            const wrongCount = keys.filter((k) => raw[k] === 0).length;
+            map[exam.id] = {
+              pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
+              answered: keys.length,
+              total: exam.questionCount,
+              wrongCount,
+            };
+          } catch { map[exam.id] = { pct: null, answered: 0, total: exam.questionCount, wrongCount: 0 }; }
+        }
+        setStatsMap(map);
+        setStatsLoading(false);
+      });
   }, [exams]);
 
   const processFiles = useCallback(async (files: File[]) => {
@@ -162,11 +187,50 @@ export default function ExamListClient({ exams: initialExams }: Props) {
       : uploadStatus === "error" ? "Error"
       : null;
 
-  const filteredExams = exams.filter((e) => {
-    if (langFilter !== "all" && e.language !== langFilter) return false;
-    if (search.trim()) return e.name.toLowerCase().includes(search.trim().toLowerCase());
-    return true;
-  });
+  const translateExam = useCallback(async (sourceId: string) => {
+    setTranslateStatus("translating");
+    setTranslateProgress(null);
+    try {
+      const res = await fetch(`/api/admin/exams/${sourceId}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLanguage: langFilter }),
+      });
+      if (!res.ok || !res.body) { setTranslateStatus("error"); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6)) as { done?: number; total?: number; exam?: ExamMeta; error?: string };
+            if (evt.done != null && evt.total != null) setTranslateProgress({ done: evt.done, total: evt.total });
+            if (evt.exam) {
+              setExams((prev) => [...prev.filter((e) => e.id !== evt.exam!.id), evt.exam!]);
+              setTranslateStatus("done");
+              setTimeout(() => { setTranslateStatus("idle"); setTranslateSourceId(null); }, 2000);
+            }
+            if (evt.error) setTranslateStatus("error");
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    } catch { setTranslateStatus("error"); }
+  }, [langFilter]);
+
+  const otherLangExams = exams.filter((e) => e.language !== langFilter);
+
+  const filteredExams = exams
+    .filter((e) => {
+      if (search.trim()) return e.name.toLowerCase().includes(search.trim().toLowerCase());
+      return true;
+    })
+    .sort((a, b) => {
+      const aMatch = a.language === langFilter ? 0 : 1;
+      const bMatch = b.language === langFilter ? 0 : 1;
+      return aMatch - bMatch;
+    });
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col relative">
@@ -185,19 +249,38 @@ export default function ExamListClient({ exams: initialExams }: Props) {
       <PageHeader
         title="Exams"
         right={
-          <Link
-            href="/profile"
-            className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            title="Profile"
-          >
-            <User size={14} />
-          </Link>
+          <>
+            {langOptions.length > 1 && (
+              <div className="flex items-center gap-0.5">
+                {langOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateSettings({ language: opt.value })}
+                    className={`px-2 py-0.5 rounded-md text-xs font-medium transition-colors ${
+                      langFilter === opt.value
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Link
+              href="/profile"
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Profile"
+            >
+              <User size={14} />
+            </Link>
+          </>
         }
       />
 
-      {/* Controls: search + language filter */}
-      <div className="px-4 sm:px-8 pt-5 pb-3 flex items-center gap-3 max-w-3xl mx-auto w-full">
-        <div className="relative flex-1">
+      {/* Controls: search */}
+      <div className="px-4 sm:px-8 pt-5 pb-3 max-w-3xl mx-auto w-full">
+        <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
           <input
             type="text"
@@ -211,19 +294,6 @@ export default function ExamListClient({ exams: initialExams }: Props) {
               <X size={13} />
             </button>
           )}
-        </div>
-        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 shrink-0">
-          {(["ja", "en"] as const).map((lang) => (
-            <button
-              key={lang}
-              onClick={() => updateSettings({ language: lang })}
-              className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${
-                langFilter === lang ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {lang === "ja" ? "JP" : "EN"}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -262,7 +332,7 @@ export default function ExamListClient({ exams: initialExams }: Props) {
       })()}
 
       <div className="flex-1 px-4 sm:px-8 pb-6 overflow-y-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto transition-opacity duration-300 ${statsLoading ? "opacity-60" : "opacity-100"}`}>
           {filteredExams.length === 0 && (
             <div className="col-span-full flex flex-col items-center gap-2 py-12 text-gray-300">
               <Search size={24} strokeWidth={1.5} />
@@ -381,6 +451,37 @@ export default function ExamListClient({ exams: initialExams }: Props) {
                   </div>
                 </button>
               </div>
+              {otherLangExams.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">Translate from another language</p>
+                  <select
+                    value={translateSourceId ?? ""}
+                    onChange={(e) => setTranslateSourceId(e.target.value || null)}
+                    className="w-full h-9 px-3 rounded-lg border border-gray-200 text-xs text-gray-700 bg-white mb-2 focus:outline-none"
+                  >
+                    <option value="">Select source exam…</option>
+                    {otherLangExams.map((e) => (
+                      <option key={e.id} value={e.id}>{e.name} ({e.language.toUpperCase()})</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => translateSourceId && translateExam(translateSourceId)}
+                    disabled={!translateSourceId || translateStatus === "translating"}
+                    className={`w-full py-2 rounded-lg border text-xs font-medium transition-all disabled:opacity-40 ${
+                      translateStatus === "done" ? "border-emerald-300 bg-emerald-50 text-emerald-600"
+                      : translateStatus === "error" ? "border-rose-300 bg-rose-50 text-rose-500"
+                      : translateStatus === "translating" ? "border-blue-300 bg-blue-50 text-blue-500"
+                      : "border-gray-200 text-gray-600 hover:border-gray-400 hover:bg-gray-50"
+                    }`}
+                  >
+                    {translateStatus === "translating"
+                      ? translateProgress ? `Translating ${translateProgress.done}/${translateProgress.total}…` : "Translating…"
+                      : translateStatus === "done" ? "Done"
+                      : translateStatus === "error" ? "Error — retry?"
+                      : `Translate → ${langOptions.find((o) => o.value === langFilter)?.label ?? langFilter}`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

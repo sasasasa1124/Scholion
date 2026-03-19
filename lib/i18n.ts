@@ -39,7 +39,24 @@ export type TranslationKey =
   | "onboardingStep3Title"
   | "onboardingStep3Desc"
   | "onboardingNext"
-  | "onboardingDone";
+  | "onboardingDone"
+  | "startAll"
+  | "showAll"
+  | "noWrongAnswers"
+  | "noQuestions"
+  | "allWrongCleared"
+  | "continueFrom"
+  | "uniq"
+  | "suggest"
+  | "alternatives"
+  | "suggestSubmit"
+  | "suggestAnswers"
+  | "suggestExplanation"
+  | "suggestComment"
+  | "suggestTypeAi"
+  | "suggestTypeManual"
+  | "suggestSuccess"
+  | "suggestNone";
 
 const translations: Record<Locale, Record<TranslationKey, string>> = {
   en: {
@@ -82,6 +99,23 @@ const translations: Record<Locale, Record<TranslationKey, string>> = {
     onboardingStep3Desc: "Open Settings to change the display language or configure the AI explanation prompt.",
     onboardingNext: "Next",
     onboardingDone: "Got it",
+    startAll: "Start All",
+    showAll: "Show all",
+    noWrongAnswers: "No wrong answers",
+    noQuestions: "No questions",
+    allWrongCleared: "All wrong answers cleared",
+    continueFrom: "Continue",
+    uniq: "Uniq",
+    suggest: "Suggest",
+    alternatives: "Alternatives",
+    suggestSubmit: "Submit",
+    suggestAnswers: "Suggested Answers",
+    suggestExplanation: "Explanation",
+    suggestComment: "Comment (optional)",
+    suggestTypeAi: "AI",
+    suggestTypeManual: "Manual",
+    suggestSuccess: "Suggestion submitted",
+    suggestNone: "No suggestions yet",
   },
   ja: {
     settings: "設定",
@@ -123,6 +157,23 @@ const translations: Record<Locale, Record<TranslationKey, string>> = {
     onboardingStep3Desc: "設定を開いて表示言語の変更やAIファクトチェックプロンプトの設定ができます。",
     onboardingNext: "次へ",
     onboardingDone: "はじめる",
+    startAll: "全問スタート",
+    showAll: "全問表示",
+    noWrongAnswers: "不正解なし",
+    noQuestions: "問題なし",
+    allWrongCleared: "不正解が全てクリアされました",
+    continueFrom: "続きから",
+    uniq: "重複除外",
+    suggest: "提案する",
+    alternatives: "代替案",
+    suggestSubmit: "送信",
+    suggestAnswers: "推奨の正解",
+    suggestExplanation: "解説",
+    suggestComment: "コメント（任意）",
+    suggestTypeAi: "AI",
+    suggestTypeManual: "手動",
+    suggestSuccess: "提案を送信しました",
+    suggestNone: "まだ提案がありません",
   },
   zh: {
     settings: "设置",
@@ -164,6 +215,23 @@ const translations: Record<Locale, Record<TranslationKey, string>> = {
     onboardingStep3Desc: "打开设置可以更改显示语言或配置 AI 事实核查提示词。",
     onboardingNext: "下一步",
     onboardingDone: "开始吧",
+    startAll: "全部开始",
+    showAll: "显示全部",
+    noWrongAnswers: "无错误答案",
+    noQuestions: "无题目",
+    allWrongCleared: "所有错误答案已清除",
+    continueFrom: "继续",
+    uniq: "去重",
+    suggest: "建议",
+    alternatives: "替代方案",
+    suggestSubmit: "提交",
+    suggestAnswers: "建议答案",
+    suggestExplanation: "解释",
+    suggestComment: "评论（可选）",
+    suggestTypeAi: "AI",
+    suggestTypeManual: "手动",
+    suggestSuccess: "建议已提交",
+    suggestNone: "暂无建议",
   },
   ko: {
     settings: "설정",
@@ -205,6 +273,23 @@ const translations: Record<Locale, Record<TranslationKey, string>> = {
     onboardingStep3Desc: "설정을 열어 표시 언어를 변경하거나 AI 팩트체크 프롬프트를 설정할 수 있습니다.",
     onboardingNext: "다음",
     onboardingDone: "시작하기",
+    startAll: "전체 시작",
+    showAll: "전체 보기",
+    noWrongAnswers: "오답 없음",
+    noQuestions: "문제 없음",
+    allWrongCleared: "모든 오답이 해결되었습니다",
+    continueFrom: "이어서",
+    uniq: "중복제외",
+    suggest: "제안",
+    alternatives: "대안",
+    suggestSubmit: "제출",
+    suggestAnswers: "추천 답",
+    suggestExplanation: "해설",
+    suggestComment: "댓글 (선택)",
+    suggestTypeAi: "AI",
+    suggestTypeManual: "수동",
+    suggestSuccess: "제안 제출됨",
+    suggestNone: "아직 제안 없음",
   },
 };
 

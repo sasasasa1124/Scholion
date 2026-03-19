@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Download, Upload, Plus, CheckCircle2, XCircle, Loader2, FilePlus } from "lucide-react";
-import type { ExamMeta, QuizStats } from "@/lib/types";
+import type { ExamMeta } from "@/lib/types";
 import ExamCard from "./ExamCard";
 
 const CSV_TEMPLATE = `duplicate,#,question,choices,answer,explanation,source
@@ -27,14 +27,6 @@ interface Props {
 type Mode = "quiz" | "review";
 type UploadStatus = "idle" | "uploading" | "done" | "error";
 
-function loadAllStats(examId: string): QuizStats {
-  try {
-    return JSON.parse(localStorage.getItem(`quiz-stats-${examId}`) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
 async function uploadFile(file: File, appendTo?: string): Promise<{ exam: ExamMeta; appended?: number }> {
   const formData = new FormData();
   formData.append("file", file);
@@ -47,6 +39,7 @@ async function uploadFile(file: File, appendTo?: string): Promise<{ exam: ExamMe
 export default function HomeClient({ exams: initialExams }: Props) {
   const [mode, setMode] = useState<Mode>("quiz");
   const [statsMap, setStatsMap] = useState<Record<string, { correct: number; answered: number; total: number }>>({});
+  const [statsLoading, setStatsLoading] = useState(true);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [exams, setExams] = useState<ExamMeta[]>(initialExams);
@@ -59,17 +52,39 @@ export default function HomeClient({ exams: initialExams }: Props) {
   const dragCountRef = useRef(0);
 
   useEffect(() => {
-    const map: typeof statsMap = {};
-    for (const exam of exams) {
-      const stats = loadAllStats(exam.id);
-      const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
-      map[exam.id] = {
-        answered: keys.length,
-        total: exam.questionCount,
-        correct: keys.filter((k) => stats[k] === 1).length,
-      };
-    }
-    setStatsMap(map);
+    fetch("/api/scores")
+      .then((r) => r.json() as Promise<{ statsMap: Record<string, Record<string, 0 | 1>> }>)
+      .then(({ statsMap: remote }) => {
+        const map: typeof statsMap = {};
+        for (const exam of exams) {
+          const stats = remote[exam.id] ?? {};
+          const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
+          map[exam.id] = {
+            answered: keys.length,
+            total: exam.questionCount,
+            correct: keys.filter((k) => stats[k] === 1).length,
+          };
+        }
+        setStatsMap(map);
+        setStatsLoading(false);
+      })
+      .catch(() => {
+        // Fallback: localStorage
+        const map: typeof statsMap = {};
+        for (const exam of exams) {
+          try {
+            const raw = JSON.parse(localStorage.getItem(`quiz-stats-${exam.id}`) ?? "{}");
+            const keys = Object.keys(raw).filter((k) => raw[k] === 0 || raw[k] === 1);
+            map[exam.id] = {
+              answered: keys.length,
+              total: exam.questionCount,
+              correct: keys.filter((k) => raw[k] === 1).length,
+            };
+          } catch { map[exam.id] = { answered: 0, total: exam.questionCount, correct: 0 }; }
+        }
+        setStatsMap(map);
+        setStatsLoading(false);
+      });
   }, [exams]);
 
   const processFiles = useCallback(async (files: File[]) => {
@@ -278,7 +293,7 @@ export default function HomeClient({ exams: initialExams }: Props) {
       </div>
 
       {/* Exam list */}
-      <div className="grid gap-3">
+      <div className={`grid gap-3 transition-opacity duration-300 ${statsLoading ? "opacity-60" : "opacity-100"}`}>
         {exams.map((exam) => (
           <ExamCard key={exam.id} exam={exam} stats={statsMap[exam.id]} mode={mode} />
         ))}

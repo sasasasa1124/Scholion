@@ -8,11 +8,13 @@ import { DEFAULT_EXPLAIN_PROMPT } from "@/lib/types";
 import { getSetting } from "@/lib/db";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 
+
 const AiResponseSchema = z.object({
   explanation: z.string(),
   answers: z.array(z.string()),
   reasoning: z.string(),
   sources: z.array(z.string()).optional(),
+  model: z.string().optional(),
 });
 
 export type AiExplainResponse = z.infer<typeof AiResponseSchema>;
@@ -81,5 +83,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json(result.data);
+  return NextResponse.json({ ...result.data, model });
 }

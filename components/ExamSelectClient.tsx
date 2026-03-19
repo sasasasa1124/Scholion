@@ -3,23 +3,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw, ChevronRight, Download, Upload, Plus, X } from "lucide-react";
-import type { ExamMeta, QuizStats } from "@/lib/types";
+import type { ExamMeta } from "@/lib/types";
 import PageHeader from "./PageHeader";
 
 interface Props {
   exams: ExamMeta[];
   mode: "quiz" | "review" | "answers";
-}
-
-function loadStats(examId: string): QuizStats {
-  try {
-    const raw = JSON.parse(localStorage.getItem(`quiz-stats-${examId}`) ?? "{}");
-    const out: QuizStats = {};
-    for (const [k, v] of Object.entries(raw)) {
-      if (v === 0 || v === 1) out[k] = v as 0 | 1;
-    }
-    return out;
-  } catch { return {}; }
 }
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
@@ -60,20 +49,43 @@ export default function ExamSelectClient({ exams: initialExams, mode }: Props) {
   const dragCountRef = useRef(0);
 
   useEffect(() => {
-    const map: typeof statsMap = {};
-    for (const exam of exams) {
-      const stats = loadStats(exam.id);
-      const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
-      const correct = keys.filter((k) => stats[k] === 1).length;
-      const wrongCount = keys.filter((k) => stats[k] === 0).length;
-      map[exam.id] = {
-        pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
-        answered: keys.length,
-        total: exam.questionCount,
-        wrongCount,
-      };
-    }
-    setStatsMap(map);
+    fetch("/api/scores")
+      .then((r) => r.json() as Promise<{ statsMap: Record<string, Record<string, 0 | 1>> }>)
+      .then(({ statsMap: remote }) => {
+        const map: typeof statsMap = {};
+        for (const exam of exams) {
+          const stats = remote[exam.id] ?? {};
+          const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
+          const correct = keys.filter((k) => stats[k] === 1).length;
+          const wrongCount = keys.filter((k) => stats[k] === 0).length;
+          map[exam.id] = {
+            pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
+            answered: keys.length,
+            total: exam.questionCount,
+            wrongCount,
+          };
+        }
+        setStatsMap(map);
+      })
+      .catch(() => {
+        // Fallback: localStorage
+        const map: typeof statsMap = {};
+        for (const exam of exams) {
+          try {
+            const raw = JSON.parse(localStorage.getItem(`quiz-stats-${exam.id}`) ?? "{}");
+            const keys = Object.keys(raw).filter((k) => raw[k] === 0 || raw[k] === 1);
+            const correct = keys.filter((k) => raw[k] === 1).length;
+            const wrongCount = keys.filter((k) => raw[k] === 0).length;
+            map[exam.id] = {
+              pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
+              answered: keys.length,
+              total: exam.questionCount,
+              wrongCount,
+            };
+          } catch { map[exam.id] = { pct: null, answered: 0, total: exam.questionCount, wrongCount: 0 }; }
+        }
+        setStatsMap(map);
+      });
   }, [exams]);
 
   const processFiles = useCallback(async (files: File[]) => {

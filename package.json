@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:cf": "npx @cloudflare/next-on-pages",
+    "build:cf": "sh scripts/build-cf.sh",
     "preview": "npm run build:cf && wrangler pages dev",
     "start": "next start",
     "cf:setup": "wrangler d1 create quiz-db",

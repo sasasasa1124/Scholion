@@ -1,17 +1,20 @@
 "use client";
 
 import { ChevronRight, CheckCircle2, Sparkles } from "lucide-react";
-import type { Question } from "@/lib/types";
+import type { Choice, Question } from "@/lib/types";
 import { useSettings } from "@/lib/settings-context";
+import SuggestPanel from "@/components/SuggestPanel";
 
 interface Props {
   question: Question;
   onNext: () => void;
   isLast: boolean;
   onAiExplain?: () => void;
+  questionDbId: string;
+  choices: Choice[];
 }
 
-export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: Props) {
+export default function ReviewReveal({ question, onNext, isLast, onAiExplain, questionDbId, choices }: Props) {
   const { t } = useSettings();
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -47,41 +50,36 @@ export default function ReviewReveal({ question, onNext, isLast, onAiExplain }: 
           </>
         )}
         {/* Sources */}
-        {(question.source || question.explanationSources?.length > 0) && (
-          <div className="mt-4 space-y-1">
-            {question.source && (
-              <p className="text-xs text-gray-300">Question source: {question.source}</p>
-            )}
-            {question.explanationSources?.length > 0 && (
-              <div>
-                <p className="text-xs text-gray-400 font-medium mb-1">References:</p>
-                <ul className="space-y-0.5">
-                  {question.explanationSources.map((url, i) => (
-                    <li key={i}>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-400 hover:text-blue-500 underline break-all"
-                      >
-                        {url}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+        {question.explanationSources?.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs text-gray-400 font-medium mb-1">References:</p>
+            <ul className="space-y-0.5">
+              {question.explanationSources.map((url, i) => (
+                <li key={i}>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:text-blue-500 underline break-all"
+                  >
+                    {url}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {/* Timestamps */}
         {(question.addedAt || question.createdAt) && (
-          <p className="text-xs text-gray-300 mt-2">
+          <p className="text-xs text-gray-400 mt-2">
             {question.addedAt && <>Added: {new Date(question.addedAt).toLocaleDateString()}</>}
             {question.createdAt && question.createdAt !== question.addedAt && (
               <> &middot; Created: {new Date(question.createdAt).toLocaleDateString()}</>
             )}
           </p>
         )}
+
+        <SuggestPanel questionId={questionDbId} choices={choices} />
       </div>
 
       {/* Next */}

@@ -7,21 +7,10 @@ import type { ExamMeta, QuizStats, CategoryStat, ExamSnapshot, SessionRecord } f
 import PageHeader from "./PageHeader";
 import ExamTrendChart from "./ExamTrendChart";
 import CategoryChart from "./CategoryChart";
-import { getAllSnapshots } from "@/lib/snapshots";
+import { loadServerSnapshots } from "@/lib/snapshots";
 
 interface Props {
   exams: ExamMeta[];
-}
-
-function loadStats(examId: string): QuizStats {
-  try {
-    const raw = JSON.parse(localStorage.getItem(`quiz-stats-${examId}`) ?? "{}");
-    const out: QuizStats = {};
-    for (const [k, v] of Object.entries(raw)) {
-      if (v === 0 || v === 1) out[k] = v as 0 | 1;
-    }
-    return out;
-  } catch { return {}; }
 }
 
 interface ExamStats {
@@ -41,21 +30,47 @@ export default function ProfileClient({ exams }: Props) {
   const [sessionCache, setSessionCache] = useState<Record<string, SessionRecord[]>>({});
 
   useEffect(() => {
-    const map: Record<string, ExamStats> = {};
-    for (const exam of exams) {
-      const stats = loadStats(exam.id);
-      const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
-      const correct = keys.filter((k) => stats[k] === 1).length;
-      const wrongCount = keys.filter((k) => stats[k] === 0).length;
-      map[exam.id] = {
-        pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
-        answered: keys.length,
-        total: exam.questionCount,
-        wrongCount,
-      };
-    }
-    setStatsMap(map);
-    setSnapshotsMap(getAllSnapshots());
+    // Load stats from server (all exams at once)
+    fetch("/api/scores")
+      .then((r) => r.json() as Promise<{ statsMap: Record<string, QuizStats> }>)
+      .then(({ statsMap: remote }) => {
+        const map: Record<string, ExamStats> = {};
+        for (const exam of exams) {
+          const stats = remote[exam.id] ?? {};
+          const keys = Object.keys(stats).filter((k) => stats[k] === 0 || stats[k] === 1);
+          const correct = keys.filter((k) => stats[k] === 1).length;
+          const wrongCount = keys.filter((k) => stats[k] === 0).length;
+          map[exam.id] = {
+            pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
+            answered: keys.length,
+            total: exam.questionCount,
+            wrongCount,
+          };
+        }
+        setStatsMap(map);
+      })
+      .catch(() => {
+        // Fallback: read from localStorage
+        const map: Record<string, ExamStats> = {};
+        for (const exam of exams) {
+          try {
+            const raw = JSON.parse(localStorage.getItem(`quiz-stats-${exam.id}`) ?? "{}");
+            const keys = Object.keys(raw).filter((k) => raw[k] === 0 || raw[k] === 1);
+            const correct = keys.filter((k) => raw[k] === 1).length;
+            const wrongCount = keys.filter((k) => raw[k] === 0).length;
+            map[exam.id] = {
+              pct: keys.length > 0 ? Math.round((correct / exam.questionCount) * 100) : null,
+              answered: keys.length,
+              total: exam.questionCount,
+              wrongCount,
+            };
+          } catch { map[exam.id] = { pct: null, answered: 0, total: exam.questionCount, wrongCount: 0 }; }
+        }
+        setStatsMap(map);
+      });
+
+    // Load snapshots from server
+    loadServerSnapshots().then(setSnapshotsMap).catch(() => {});
   }, [exams]);
 
   function handleExamClick(examId: string) {

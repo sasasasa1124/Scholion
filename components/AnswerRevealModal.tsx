@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { CheckCircle2, XCircle, ChevronRight, Sparkles } from "lucide-react";
-import type { Question } from "@/lib/types";
+import type { Choice, Question } from "@/lib/types";
 import { useSettings } from "@/lib/settings-context";
+import SuggestPanel from "@/components/SuggestPanel";
 
 interface Props {
   question: Question;
@@ -11,9 +12,11 @@ interface Props {
   isLast: boolean;
   onNext: () => void;
   onAiExplain: () => void;
+  questionDbId: string;
+  choices: Choice[];
 }
 
-export default function AnswerRevealModal({ question, isCorrect, isLast, onNext, onAiExplain }: Props) {
+export default function AnswerRevealModal({ question, isCorrect, isLast, onNext, onAiExplain, questionDbId, choices }: Props) {
   const { t } = useSettings();
   // Keyboard: Escape / N / Enter → next
   // 150ms guard prevents the same keydown that triggered Submit from instantly dismissing the modal
@@ -21,7 +24,8 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
     const ready = Date.now();
     const handler = (e: KeyboardEvent) => {
       if (Date.now() - ready < 150) return;
-      if (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "Enter" || e.key === "ArrowRight") {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (!e.isComposing && (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "Enter" || e.key === "ArrowRight")) {
         e.preventDefault();
         onNext();
       }
@@ -114,37 +118,35 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
 
           {/* Sources */}
           {question.explanationSources && question.explanationSources.length > 0 && (
-            <div className="space-y-1">
-              {question.explanationSources.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 font-medium mb-1">References:</p>
-                  <ul className="space-y-0.5">
-                    {question.explanationSources.map((url, i) => (
-                      <li key={i}>
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-400 hover:text-blue-500 underline break-all"
-                        >
-                          {url}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-1">References:</p>
+              <ul className="space-y-0.5">
+                {question.explanationSources.map((url, i) => (
+                  <li key={i}>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-400 hover:text-blue-500 underline break-all"
+                    >
+                      {url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {/* Timestamps */}
           {(question.addedAt || question.createdAt) && (
-            <p className="text-xs text-gray-300">
+            <p className="text-xs text-gray-400">
               {question.addedAt && <>Added: {new Date(question.addedAt).toLocaleDateString()}</>}
               {question.createdAt && question.createdAt !== question.addedAt && (
                 <> &middot; Created: {new Date(question.createdAt).toLocaleDateString()}</>
               )}
             </p>
           )}
+
+          <SuggestPanel questionId={questionDbId} choices={choices} />
         </div>
 
         {/* Footer */}

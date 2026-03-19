@@ -25,7 +25,7 @@ export interface Question {
 export interface ExamMeta {
   id: string;           // exam id
   name: string;         // display name
-  language: "ja" | "en";
+  language: "ja" | "en" | "zh" | "ko";
   questionCount: number;
   duplicateCount?: number;
 }
@@ -67,6 +67,10 @@ export interface UserSettings {
   aiPrompt: string;
   aiRefinePrompt: string;
   dailyGoal: number; // questions per day target
+  audioMode: boolean; // read questions aloud
+  audioSpeed: number; // playback rate 0.5–4.0
+  audioPrefetch: number; // chunks to pre-fetch ahead while playing (0 = off, default: 3)
+  skipRevealOnCorrect: boolean; // auto-advance without showing answer when correct
 }
 
 export const DEFAULT_EXPLAIN_PROMPT = `You are a Salesforce/MuleSoft certification exam expert.
@@ -86,10 +90,10 @@ Respond ONLY with a JSON object (no markdown, no code fences) with exactly these
 - explanation: concise explanation of why the correct answer(s) are correct
 - answers: array of correct choice labels (e.g. ["A"] or ["A", "C"])
 - reasoning: brief reasoning for why you chose those answers
-- sources: array of 1–3 URLs that directly support the answer (official docs, Trailhead, etc.). Use [] if none found.`;
+- sources: array of 1–3 URLs that directly support the answer. Use [] if none found.`;
 
 export const DEFAULT_REFINE_PROMPT = `You are an expert editor for Salesforce/MuleSoft certification exam questions.
-Your task is to fix ONLY typos, grammatical errors, spelling mistakes, and awkward phrasing in the question text and answer choices.
+Your task is to fix ONLY typos, grammatical errors, spelling mistakes, and awkward phrasing, missing line breaks (either in list, bullets; 1.xxx, 1).xxx, *xxx , - xxx, etc.) in the question text and answer choices.
 Do NOT change the meaning, technical content, correct answers, or add/remove choices.
 Do NOT rewrite or rephrase if there is no error — preserve the original wording as much as possible.
 
@@ -104,6 +108,18 @@ Respond ONLY with a JSON object (no markdown, no code fences) with exactly these
 - question: the corrected question text (identical to input if no errors found)
 - choices: array of corrected choices in the same order (identical to input if no errors found)
 - changesSummary: a brief human-readable summary of what was changed, or empty string if nothing changed`;
+
+export interface Suggestion {
+  id: number;
+  questionId: string;
+  type: "ai" | "manual";
+  suggestedAnswers: string[] | null;
+  suggestedExplanation: string | null;
+  aiModel: string | null;
+  comment: string | null;
+  createdBy: string;
+  createdAt: string;
+}
 
 export interface SessionRecord {
   id: string;
@@ -122,4 +138,8 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   aiPrompt: DEFAULT_EXPLAIN_PROMPT,
   aiRefinePrompt: DEFAULT_REFINE_PROMPT,
   dailyGoal: 20,
+  audioMode: false,
+  audioSpeed: 1.0,
+  audioPrefetch: 3,
+  skipRevealOnCorrect: false,
 };

@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpenCheck, ChevronLeft, ChevronRight, Pencil, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, BookOpenCheck, ChevronLeft, ChevronRight, Pencil, Sparkles, Wand2, Volume2, VolumeOff } from "lucide-react";
 import type { Question } from "@/lib/types";
 import QuestionEditModal from "./QuestionEditModal";
 import AiExplainPopup from "./AiExplainPopup";
 import AiRefinePopup from "./AiRefinePopup";
 import { useSettings } from "@/lib/settings-context";
+import { useAudio } from "@/hooks/useAudio";
+import { buildAnswerText } from "@/lib/ttsText";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 
@@ -24,13 +26,26 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
-  const { settings, t } = useSettings();
+  const { settings, updateSettings, t } = useSettings();
+  const { speak, stop, prefetch } = useAudio();
+
+  // Auto-play when question changes or audio is toggled on
+  useEffect(() => {
+    const q = questions[currentIndex];
+    if (!q) return;
+    speak(buildAnswerText(q, settings.language));
+    // Pre-warm first chunk of next question
+    const next = questions[currentIndex + 1];
+    if (next) prefetch(buildAnswerText(next, settings.language)[0]);
+    return () => { stop(); };
+  }, [currentIndex, speak, stop, prefetch, settings.language, questions]);
 
   const [aiPopupOpen, setAiPopupOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<AiExplainResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiAdopting, setAiAdopting] = useState(false);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
 
   const [refinePopupOpen, setRefinePopupOpen] = useState(false);
   const [refineLoading, setRefineLoading] = useState(false);
@@ -108,6 +123,31 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     }
   }, [aiResult, questions, currentIndex]);
 
+  const handleAiSuggest = useCallback(async () => {
+    if (!aiResult) return;
+    const q = questions[currentIndex];
+    if (!q) return;
+    setAiSuggesting(true);
+    try {
+      await fetch("/api/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: q.dbId,
+          type: "ai",
+          suggestedAnswers: aiResult.answers,
+          suggestedExplanation: aiResult.explanation,
+          aiModel: aiResult.model ?? null,
+          comment: null,
+        }),
+      });
+      setAiPopupOpen(false);
+      setAiResult(null);
+    } finally {
+      setAiSuggesting(false);
+    }
+  }, [aiResult, questions, currentIndex]);
+
   const handleAiRefine = useCallback(async () => {
     const q = questions[currentIndex];
     if (!q) return;
@@ -176,7 +216,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     const handler = (e: KeyboardEvent) => {
       if (editingQuestion || aiPopupOpen || refinePopupOpen) return;
       if (e.key === "ArrowRight" || e.key === "Enter") setCurrentIndex((i) => Math.min(i + 1, questions.length - 1));
-      else if (e.key === "ArrowLeft" || e.key === "Backspace") setCurrentIndex((i) => Math.max(i - 1, 0));
+      else if (e.key === "ArrowLeft") setCurrentIndex((i) => Math.max(i - 1, 0));
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -212,7 +252,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#f8f9fb]">
       {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-gray-200 bg-white">
+      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <Link href={`/exam/${encodeURIComponent(examId)}`} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0">
             <ArrowLeft size={14} />
@@ -223,6 +263,13 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => { settings.audioMode ? updateSettings({ audioMode: false }) : updateSettings({ audioMode: true }); }}
+            className="p-1.5 rounded-lg transition-colors text-gray-300 hover:text-gray-600 hover:bg-gray-100"
+            title={settings.audioMode ? "Audio mode on (click to turn off)" : "Audio mode off (click to turn on)"}
+          >
+            {settings.audioMode ? <Volume2 size={13} className="text-sky-500" /> : <VolumeOff size={13} />}
+          </button>
           <button
             onClick={() => setEditingQuestion(q)}
             className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
@@ -306,7 +353,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
               </button>
             </div>
             {q.explanation ? (
-              <p className="text-sm lg:text-base leading-relaxed text-gray-600 whitespace-pre-wrap">{q.explanation}</p>
+              <p className="text-sm lg:text-base leading-relaxed text-gray-700 whitespace-pre-wrap">{q.explanation}</p>
             ) : (
               <p className="text-sm text-gray-300">—</p>
             )}
@@ -352,7 +399,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           >
             <ChevronRight size={15} />
           </button>
-          <span className="text-xs text-gray-300 ml-1 shrink-0 hidden lg:block">Enter →  ⌫ ←</span>
+          <span className="text-xs text-gray-300 ml-1 shrink-0 hidden lg:block">Enter →  ← </span>
         </div>
       </footer>
 
@@ -378,6 +425,8 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
             setAiResult(null);
             setAiError(null);
           }}
+          onSuggest={handleAiSuggest}
+          suggesting={aiSuggesting}
         />
       )}
 

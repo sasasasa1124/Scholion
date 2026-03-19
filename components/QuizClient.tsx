@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe, Home, History, Copy,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe, Home, History, Copy, Volume2, VolumeOff, Loader2,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
@@ -19,6 +19,8 @@ import AiRefinePopup from "./AiRefinePopup";
 import AnswerRevealModal from "./AnswerRevealModal";
 import KeyboardHintToast from "./KeyboardHintToast";
 import { useSettings } from "@/lib/settings-context";
+import { useAudio } from "@/hooks/useAudio";
+import { buildQuestionText, buildAnswerRevealText } from "@/lib/ttsText";
 import { recordDailySnapshot } from "@/lib/snapshots";
 
 const LANG_OPTIONS: { value: Locale; label: string }[] = [
@@ -35,6 +37,7 @@ interface Props {
   mode: "quiz" | "review";
   userEmail: string;
   activeCategory: string | null;
+  initialFilter?: "all" | "continue" | "wrong";
 }
 
 const statsKey = (id: string) => `quiz-stats-${id}`;
@@ -71,12 +74,12 @@ function saveLastQuestionId(examId: string, questionId: number) {
   localStorage.setItem(lastQKey(examId), String(questionId));
 }
 
-export default function QuizClient({ questions: initialQuestions, examId, examName, mode, userEmail, activeCategory }: Props) {
+export default function QuizClient({ questions: initialQuestions, examId, examName, mode, userEmail, activeCategory, initialFilter }: Props) {
   const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState<QuizStats>({});
-  const [filter, setFilter] = useState<"all" | "continue" | "wrong">("all");
+  const [filter, setFilter] = useState<"all" | "continue" | "wrong">(initialFilter ?? "all");
   const [savedLastQuestionId, setSavedLastQuestionId] = useState<number | null>(null);
   const [excludeDuplicates, setExcludeDuplicates] = useState(true);
 
@@ -94,6 +97,15 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [aiResult, setAiResult] = useState<AiExplainResponse | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiAdopting, setAiAdopting] = useState(false);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
+
+  // Reset AI popup when moving to a different question
+  useEffect(() => {
+    setAiPopupOpen(false);
+    setAiResult(null);
+    setAiLoading(false);
+    setAiError(null);
+  }, [currentIndex]);
 
   const [refinePopupOpen, setRefinePopupOpen] = useState(false);
   const [refineLoading, setRefineLoading] = useState(false);
@@ -103,12 +115,39 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
 
   const [sessionId] = useState<string>(() => crypto.randomUUID());
   const [sessionCorrectCount, setSessionCorrectCount] = useState(0);
+  const [filterResetToast, setFilterResetToast] = useState(false);
   const sessionCompletedRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const touchZone = useRef<"top" | "bottom" | null>(null);
 
   const { settings, updateSettings, t } = useSettings();
+  const { speak, stop, prefetch, loading: audioLoading } = useAudio();
+
+  // Auto-play question + choices when question changes or audio is toggled on
+  // Skip if answer is already revealed/submitted to avoid overlap with reveal effect
+  useEffect(() => {
+    if (revealed || submitted) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    speak(buildQuestionText(q));
+    // Pre-warm the first chunk of the next question
+    const next = filteredQuestions[currentIndex + 1];
+    if (next) prefetch(buildQuestionText(next)[0]);
+    return () => { stop(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, mode, speak, stop, prefetch, revealed, submitted]);
+
+  // Auto-play answer reveal when card is flipped (review) or submitted (quiz)
+  useEffect(() => {
+    if (!revealed && !submitted) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    stop();
+    speak(buildAnswerRevealText(q, settings.language));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed, submitted, speak, stop, settings.language, currentIndex]);
+
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
 
@@ -208,6 +247,19 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const continueDisplayNum = continueIndex >= 0 ? continueIndex + 1 : null;
   const hasContinue = continueDisplayNum !== null;
 
+  // Auto-reset "wrong" filter when all wrong answers are cleared
+  useEffect(() => {
+    if (filter === "wrong" && wrongCount === 0) {
+      setFilter("all");
+      setCurrentIndex(0);
+      setFilterResetToast(true);
+      const timer = setTimeout(() => setFilterResetToast(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wrongCount]);
+
+
   const recordAnswer = useCallback((questionId: number, correct: boolean, questionDbId: string, srsQuality?: 1 | 4) => {
     setStats((prev) => {
       const next = { ...prev, [String(questionId)]: correct ? 1 : 0 } as QuizStats;
@@ -247,21 +299,31 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     }
     const correct = q.answers.length === selected.size && q.answers.every((a) => selected.has(a));
     setIsCorrect(correct);
-    setSubmitted(true);
     recordAnswer(q.id, correct, q.dbId);
     if (mode !== "review") {
       setStreak((prev) => correct ? prev + 1 : 0);
     }
-  }, [filteredQuestions, currentIndex, selected, recordAnswer, mode]);
+    if (correct && settings.skipRevealOnCorrect && mode === "quiz") {
+      goNext();
+    } else {
+      setSubmitted(true);
+    }
+  }, [filteredQuestions, currentIndex, selected, recordAnswer, mode, settings.skipRevealOnCorrect]);
 
   const goNext = useCallback(() => {
     setDirection("forward");
     setCurrentIndex((i) => Math.min(i + 1, filteredQuestions.length - 1));
+    setRevealed(false);
+    setSubmitted(false);
+    setSelected(new Set());
   }, [filteredQuestions.length]);
 
   const goPrev = useCallback(() => {
     setDirection("backward");
     setCurrentIndex((i) => Math.max(i - 1, 0));
+    setRevealed(false);
+    setSubmitted(false);
+    setSelected(new Set());
   }, []);
 
   const doCompleteSession = useCallback(() => {
@@ -414,6 +476,31 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     }
   }, [aiResult, filteredQuestions, currentIndex]);
 
+  const handleAiSuggest = useCallback(async () => {
+    if (!aiResult) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    setAiSuggesting(true);
+    try {
+      await fetch("/api/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: q.dbId,
+          type: "ai",
+          suggestedAnswers: aiResult.answers,
+          suggestedExplanation: aiResult.explanation,
+          aiModel: aiResult.model ?? null,
+          comment: null,
+        }),
+      });
+      setAiPopupOpen(false);
+      setAiResult(null);
+    } finally {
+      setAiSuggesting(false);
+    }
+  }, [aiResult, filteredQuestions, currentIndex]);
+
   const handleAiRefine = useCallback(async () => {
     const q = filteredQuestions[currentIndex];
     if (!q) return;
@@ -477,6 +564,20 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     }
   }, [filteredQuestions, currentIndex]);
 
+  const handleToggleDuplicate = useCallback(async () => {
+    const q = filteredQuestions[currentIndex];
+    if (!q?.dbId) return;
+    const newVal = !q.isDuplicate;
+    await fetch(`/api/admin/questions/${q.dbId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_duplicate: newVal }),
+    });
+    setQuestions((prev) =>
+      prev.map((pq) => pq.dbId === q.dbId ? { ...pq, isDuplicate: newVal } : pq)
+    );
+  }, [filteredQuestions, currentIndex]);
+
   // Keyboard
   useEffect(() => {
     const q = filteredQuestions[currentIndex];
@@ -484,6 +585,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     const labels = q.choices.map((c) => c.label);
 
     const handler = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (editingQuestion || aiPopupOpen || refinePopupOpen) return;
       if (mode === "quiz" && submitted) return; // modal handles keys
@@ -522,11 +624,11 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
       <div className="h-screen flex flex-col items-center justify-center gap-4 px-4">
         <AlertCircle size={32} className="text-gray-300" />
         <p className="font-semibold text-gray-700">
-          {filter === "wrong" ? "No wrong answers" : "No questions"}
+          {filter === "wrong" ? t("noWrongAnswers") : t("noQuestions")}
         </p>
         {(filter === "wrong" || excludeDuplicates) && (
           <button onClick={() => { setFilter("all"); setExcludeDuplicates(false); }} className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors">
-            Show all
+            {t("showAll")}
           </button>
         )}
         <button onClick={() => { doCompleteSession(); router.push(backHref); }} className="text-sm text-gray-400 hover:text-gray-700 flex items-center gap-1.5">
@@ -540,8 +642,14 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
 
   return (
     <div className="h-[100dvh] flex flex-col overflow-hidden bg-[#f8f9fb]">
+      {/* Filter reset toast */}
+      {filterResetToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white text-xs font-medium px-4 py-2 rounded-xl shadow-lg pointer-events-none">
+          {t("allWrongCleared")}
+        </div>
+      )}
       {/* ── Header ── */}
-      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-gray-200 bg-white">
+      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200 bg-white">
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <button
             onClick={() => { doCompleteSession(); router.push(backHref); }}
@@ -582,15 +690,15 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           )}
           <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
             <button onClick={() => setFilter("all")} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${filter === "all" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <Layers size={11} /> <span className="hidden sm:inline">All</span> {questions.length}
+              <Layers size={11} /> <span className="hidden sm:inline">{t("all")}</span> {questions.length}
             </button>
             {hasContinue && (
               <button onClick={() => setFilter("continue")} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${filter === "continue" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                <History size={11} /> <span className="hidden sm:inline">続きから</span><span className="hidden sm:inline text-gray-400 ml-0.5">Q{continueDisplayNum}</span>
+                <History size={11} /> <span className="hidden sm:inline">{t("continueFrom")}</span><span className="hidden sm:inline text-gray-400 ml-0.5">Q{continueDisplayNum}</span>
               </button>
             )}
             <button onClick={() => setFilter("wrong")} disabled={wrongCount === 0} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${filter === "wrong" ? "bg-white text-rose-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <AlertCircle size={11} /> <span className="hidden sm:inline">Wrong</span> {wrongCount}
+              <AlertCircle size={11} /> <span className="hidden sm:inline">{t("wrong")}</span> {wrongCount}
             </button>
             {duplicateCount > 0 && (
               <button
@@ -598,7 +706,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                 className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${excludeDuplicates ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
                 title={excludeDuplicates ? "Include duplicates" : "Exclude duplicates"}
               >
-                <Copy size={11} /> <span className="hidden sm:inline">Uniq</span>
+                <Copy size={11} /> <span className="hidden sm:inline">{t("uniq")}</span>
               </button>
             )}
           </div>
@@ -624,6 +732,17 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
               </div>
             )}
           </div>
+          <button
+            onClick={() => updateSettings({ audioMode: !settings.audioMode })}
+            className="p-1.5 rounded-lg transition-colors text-gray-300 hover:text-gray-600 hover:bg-gray-100"
+            title={settings.audioMode ? "Audio on (click to turn off)" : "Audio off (click to turn on)"}
+          >
+            {settings.audioMode && audioLoading
+              ? <Loader2 size={13} className="animate-spin text-sky-400" />
+              : settings.audioMode
+              ? <Volume2 size={13} className="text-sky-500" />
+              : <VolumeOff size={13} />}
+          </button>
           <Link
             href={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}`)}`}
             className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -650,7 +769,10 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
         `}>
           {/* Position indicator */}
           <div className="shrink-0 px-4 sm:px-8 pt-4 sm:pt-5 pb-3 flex items-center justify-between">
-            <span className="text-xs tabular-nums text-gray-400">Q{currentIndex + 1}/{filteredQuestions.length}</span>
+            <span className="text-xs tabular-nums text-gray-400">
+              Q{currentIndex + 1}/{filteredQuestions.length}
+              <span className="ml-2 text-gray-300">v{q.version}</span>
+            </span>
             <button
               onClick={() => setCreateMode(true)}
               className="p-1 text-gray-300 hover:text-emerald-500 transition-colors"
@@ -669,6 +791,10 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                       <div className="flex-1 overflow-y-auto px-4 sm:px-8 pb-4">
                         <div className="max-w-3xl mx-auto w-full">
                           <div className="flex justify-end gap-2 mb-2">
+                            <button onClick={handleToggleDuplicate} className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${q.isDuplicate ? "bg-orange-50 border-orange-200 text-orange-500 hover:bg-orange-100" : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100"}`} title={q.isDuplicate ? "Unmark duplicate" : "Mark as duplicate"}>
+                              <Copy size={12} />
+                              Dup
+                            </button>
                             <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title={t("refine")}>
                               <Wand2 size={12} />
                               {t("refine")}
@@ -683,6 +809,11 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                               className="text-gray-900 text-sm lg:text-base leading-relaxed font-medium whitespace-pre-wrap [&_img]:max-w-full [&_img]:rounded-lg [&_img]:mt-2"
                               dangerouslySetInnerHTML={{ __html: q.question }}
                             />
+                            {q.source && (
+                              <a href={q.source} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-300 hover:text-blue-400 mt-2 truncate block" title={q.source}>
+                                Source: {q.source}
+                              </a>
+                            )}
                           </div>
                           <div className="space-y-2">
                             {q.choices.map((c, i) => (
@@ -714,7 +845,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                     </div>
                     {/* Back: answer reveal */}
                     <div className="card-back">
-                      <ReviewReveal question={q} onNext={handleRevealNext} isLast={isLast} onAiExplain={handleAiExplain} />
+                      <ReviewReveal question={q} onNext={handleRevealNext} isLast={isLast} onAiExplain={handleAiExplain} questionDbId={q.dbId} choices={q.choices} />
                     </div>
                   </div>
                 </div>
@@ -726,9 +857,13 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                 >
                   <div className="max-w-3xl mx-auto w-full h-full">
                     <div className="flex justify-end gap-2 mb-2">
+                      <button onClick={handleToggleDuplicate} className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${q.isDuplicate ? "bg-orange-50 border-orange-200 text-orange-500 hover:bg-orange-100" : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100"}`} title={q.isDuplicate ? "Unmark duplicate" : "Mark as duplicate"}>
+                        <Copy size={12} />
+                        Dup
+                      </button>
                       <button onClick={handleAiRefine} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors" title={t("refine")}>
                         <Wand2 size={12} />
-                        AI Refine
+                        {t("refine")}
                       </button>
                       <button onClick={() => setEditingQuestion(q)} className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors" title="Edit question">
                         <Pencil size={12} />
@@ -769,7 +904,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                           <button
                             onClick={handleAiExplain}
                             className="text-gray-300 hover:text-violet-500 transition-colors"
-                            title="AI Explain"
+                            title={t("explain")}
                           >
                             <Sparkles size={15} />
                           </button>
@@ -879,6 +1014,11 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             setAiResult(null);
             setAiError(null);
           }}
+          onSuggest={handleAiSuggest}
+          suggesting={aiSuggesting}
+          question={filteredQuestions[currentIndex]?.question}
+          choices={filteredQuestions[currentIndex]?.choices}
+          answers={filteredQuestions[currentIndex]?.answers}
         />
       )}
 
@@ -908,6 +1048,8 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           isLast={isLast}
           onNext={handleRevealNext}
           onAiExplain={handleAiExplain}
+          questionDbId={q.dbId}
+          choices={q.choices}
         />
       )}
 
