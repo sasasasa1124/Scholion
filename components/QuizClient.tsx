@@ -2,13 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
-  ArrowLeft, BookOpen, Brain, Layers, AlertCircle,
-  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Zap, Pencil, Sparkles, Settings, Wand2, Plus, Globe, Home, History, Copy, Volume2, VolumeOff, Loader2,
+  ArrowLeft, AlertCircle,
+  CheckCircle2, XCircle, ChevronLeft, ChevronRight, Pencil, Sparkles, Wand2, Plus, Copy,
 } from "lucide-react";
 import type { Question, QuizStats } from "@/lib/types";
-import { LANG_OPTIONS, type Locale } from "@/lib/i18n";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 import QuizQuestion from "./QuizQuestion";
@@ -18,6 +16,7 @@ import AiExplainPopup from "./AiExplainPopup";
 import AiRefinePopup from "./AiRefinePopup";
 import AnswerRevealModal from "./AnswerRevealModal";
 import KeyboardHintToast from "./KeyboardHintToast";
+import QuizHeader from "./QuizHeader";
 import { useSettings } from "@/lib/settings-context";
 import { useAudio } from "@/hooks/useAudio";
 import { buildQuestionText, buildAnswerRevealText } from "@/lib/ttsText";
@@ -124,7 +123,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const touchZone = useRef<"top" | "bottom" | null>(null);
 
   const { settings, updateSettings, t } = useSettings();
-  const { speak, stop, prefetch, loading: audioLoading } = useAudio();
+  const { speak, stop, prefetch } = useAudio();
 
   // Auto-play question + choices when question changes or audio is toggled on
   // Skip if answer is already revealed/submitted to avoid overlap with reveal effect
@@ -156,19 +155,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, submitted, speak, stop, settings.language, currentIndex]);
 
-  const [langOpen, setLangOpen] = useState(false);
-  const langRef = useRef<HTMLDivElement>(null);
-
   const backHref = `/exam/${examId}`;
-
-  // Close language dropdown on outside click
-  useEffect(() => {
-    function handleOutside(e: MouseEvent) {
-      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
 
   // Create session on mount
   useEffect(() => {
@@ -650,7 +637,6 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     return () => window.removeEventListener("keydown", handler);
   }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, aiPopupOpen, refinePopupOpen, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
 
-  const ModeIcon = mode === "quiz" ? Brain : BookOpen;
   const isLast = currentIndex === filteredQuestions.length - 1;
   const sliderPct = filteredQuestions.length > 1
     ? `${(currentIndex / (filteredQuestions.length - 1)) * 100}%`
@@ -688,109 +674,27 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
         </div>
       )}
       {/* ── Header ── */}
-      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <button
-            onClick={() => { doCompleteSession(); router.push(backHref); }}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0"
-          >
-            <ArrowLeft size={14} />
-          </button>
-          <button
-            onClick={() => { doCompleteSession(); router.push("/"); }}
-            className="p-1 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
-            title="Home"
-          >
-            <Home size={13} />
-          </button>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
-            <ModeIcon size={13} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate">{examName}</span>
-            {activeCategory && (
-              <>
-                <span className="text-gray-200 shrink-0">·</span>
-                <span className="truncate text-blue-500 font-medium">{activeCategory}</span>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {streak >= 2 && (
-            <div key={streak} className="quiz-streak-badge flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
-              <Zap size={11} fill="currentColor" />
-              {streak}
-            </div>
-          )}
-          {overallRate !== null && (
-            <span className={`text-xs font-semibold tabular-nums hidden sm:inline ${overallRate >= 80 ? "text-emerald-600" : overallRate >= 60 ? "text-amber-500" : "text-rose-500"}`}>
-              {totalCorrect}/{questions.length}
-              <span className="font-normal text-gray-400 ml-1">({overallRate}%)</span>
-            </span>
-          )}
-          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-            <button onClick={() => setFilter("all")} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${filter === "all" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <Layers size={11} /> <span className="hidden sm:inline">{t("all")}</span> {questions.length}
-            </button>
-            {hasContinue && (
-              <button onClick={() => setFilter("continue")} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${filter === "continue" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                <History size={11} /> <span className="hidden sm:inline">{t("continueFrom")}</span><span className="hidden sm:inline text-gray-400 ml-0.5">Q{continueDisplayNum}</span>
-              </button>
-            )}
-            <button onClick={() => setFilter("wrong")} disabled={wrongCount === 0} className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${filter === "wrong" ? "bg-white text-rose-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <AlertCircle size={11} /> <span className="hidden sm:inline">{t("wrong")}</span> {wrongCount}
-            </button>
-            {duplicateCount > 0 && (
-              <button
-                onClick={() => setExcludeDuplicates((v) => !v)}
-                className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${excludeDuplicates ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-                title={excludeDuplicates ? "Include duplicates" : "Exclude duplicates"}
-              >
-                <Copy size={11} /> <span className="hidden sm:inline">{t("uniq")}</span>
-              </button>
-            )}
-          </div>
-          <div ref={langRef} className="relative">
-            <button
-              onClick={() => setLangOpen((o) => !o)}
-              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              title="Language"
-            >
-              <Globe size={13} />
-            </button>
-            {langOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[90px]">
-                {LANG_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => { updateSettings({ language: opt.value }); setLangOpen(false); }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${settings.language === opt.value ? "font-semibold text-blue-600" : "text-gray-700"}`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={() => updateSettings({ audioMode: !settings.audioMode })}
-            className="p-1.5 rounded-lg transition-colors text-gray-300 hover:text-gray-600 hover:bg-gray-100"
-            title={settings.audioMode ? "Audio on (click to turn off)" : "Audio off (click to turn on)"}
-          >
-            {settings.audioMode && audioLoading
-              ? <Loader2 size={13} className="animate-spin text-sky-400" />
-              : settings.audioMode
-              ? <Volume2 size={13} className="text-sky-500" />
-              : <VolumeOff size={13} />}
-          </button>
-          <Link
-            href={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}&filter=${filter}&startId=${filteredQuestions[currentIndex]?.id ?? ""}`)}`}
-            className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            title="Settings"
-          >
-            <Settings size={13} />
-          </Link>
-        </div>
-      </header>
+      <QuizHeader
+        examId={examId}
+        examName={examName}
+        mode={mode}
+        activeCategory={activeCategory}
+        onBack={() => { doCompleteSession(); router.push(backHref); }}
+        onHome={() => { doCompleteSession(); router.push("/"); }}
+        settingsHref={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}&filter=${filter}&startId=${filteredQuestions[currentIndex]?.id ?? ""}`)}`}
+        totalCorrect={totalCorrect}
+        totalQuestions={questions.length}
+        overallRate={overallRate}
+        streak={streak}
+        filter={filter}
+        onFilterChange={setFilter}
+        wrongCount={wrongCount}
+        hasContinue={hasContinue}
+        continueDisplayNum={continueDisplayNum}
+        duplicateCount={duplicateCount}
+        excludeDuplicates={excludeDuplicates}
+        onToggleDuplicates={() => setExcludeDuplicates((v) => !v)}
+      />
 
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>

@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
-import { ArrowLeft, BookOpenCheck, ChevronLeft, ChevronRight, Pencil, Sparkles, Wand2, Volume2, VolumeOff } from "lucide-react";
-import type { Question } from "@/lib/types";
+import { ChevronLeft, ChevronRight, Sparkles, Wand2 } from "lucide-react";
+import type { Question, QuizStats } from "@/lib/types";
 import QuestionEditModal from "./QuestionEditModal";
 import AiExplainPopup from "./AiExplainPopup";
 import AiRefinePopup from "./AiRefinePopup";
+import QuizHeader from "./QuizHeader";
 import { useSettings } from "@/lib/settings-context";
 import { useAudio } from "@/hooks/useAudio";
 import { buildAnswerText } from "@/lib/ttsText";
@@ -21,24 +21,81 @@ interface Props {
   activeCategory?: string | null;
 }
 
-export default function AnswersClient({ questions: initialQuestions, examName, examId, userEmail: _userEmail }: Props) {
+const statsKey = (id: string) => `quiz-stats-${id}`;
+
+function loadLocalStats(examId: string): QuizStats {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(statsKey(examId)) ?? "{}");
+    const migrated: QuizStats = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === 0 || v === 1) migrated[k] = v as 0 | 1;
+    }
+    return migrated;
+  } catch { return {}; }
+}
+
+export default function AnswersClient({ questions: initialQuestions, examName, examId, userEmail: _userEmail, activeCategory }: Props) {
   const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [stats, setStats] = useState<QuizStats>({});
+  const [filter, setFilter] = useState<"all" | "wrong">("all");
 
-  const { settings, updateSettings, t } = useSettings();
+  const { settings, t } = useSettings();
   const { speak, stop, prefetch } = useAudio();
+
+  // Load stats from localStorage and sync with DB
+  useEffect(() => {
+    const local = loadLocalStats(examId);
+    setStats(local);
+    fetch(`/api/scores?examId=${encodeURIComponent(examId)}`)
+      .then((r) => r.json() as Promise<QuizStats>)
+      .then((db) => setStats((prev) => ({ ...prev, ...db })))
+      .catch(() => {});
+  }, [examId]);
+
+  // Derived stats
+  const totalAnswered = questions.filter((q) => stats[String(q.id)] !== undefined).length;
+  const totalCorrect = questions.filter((q) => stats[String(q.id)] === 1).length;
+  const overallRate = totalAnswered > 0 ? Math.round((totalCorrect / questions.length) * 100) : null;
+  const wrongCount = questions.filter((q) => stats[String(q.id)] === 0).length;
+
+  // Streak: longest consecutive correct answers from stats
+  const streak = (() => {
+    let best = 0, cur = 0;
+    for (const q of questions) {
+      if (stats[String(q.id)] === 1) { cur++; best = Math.max(best, cur); }
+      else cur = 0;
+    }
+    return best;
+  })();
+
+  // Filtered questions
+  const filteredQuestions = filter === "wrong"
+    ? questions.filter((q) => stats[String(q.id)] === 0)
+    : questions;
+
+  // Clamp index when filter changes
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [filter]);
+
+  useEffect(() => {
+    if (filteredQuestions.length > 0 && currentIndex >= filteredQuestions.length) {
+      setCurrentIndex(filteredQuestions.length - 1);
+    }
+  }, [filteredQuestions.length, currentIndex]);
 
   // Auto-play when question changes or audio is toggled on
   useEffect(() => {
-    const q = questions[currentIndex];
+    const q = filteredQuestions[currentIndex];
     if (!q) return;
     speak(buildAnswerText(q, settings.language));
-    // Pre-warm first chunk of next question
-    const next = questions[currentIndex + 1];
+    const next = filteredQuestions[currentIndex + 1];
     if (next) prefetch(buildAnswerText(next, settings.language)[0]);
     return () => { stop(); };
-  }, [currentIndex, speak, stop, prefetch, settings.language, questions]);
+  }, [currentIndex, speak, stop, prefetch, settings.language, filteredQuestions]);
 
   const [aiPopupOpen, setAiPopupOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -58,7 +115,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   }, []);
 
   const handleAiExplain = useCallback(async () => {
-    const q = questions[currentIndex];
+    const q = filteredQuestions[currentIndex];
     if (!q) return;
     setAiPopupOpen(true);
     setAiLoading(true);
@@ -87,11 +144,11 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     } finally {
       setAiLoading(false);
     }
-  }, [questions, currentIndex, settings.aiPrompt]);
+  }, [filteredQuestions, currentIndex, settings.aiPrompt]);
 
   const handleAiAdopt = useCallback(async () => {
     if (!aiResult) return;
-    const q = questions[currentIndex];
+    const q = filteredQuestions[currentIndex];
     if (!q) return;
     setAiAdopting(true);
     try {
@@ -121,11 +178,11 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     } finally {
       setAiAdopting(false);
     }
-  }, [aiResult, questions, currentIndex]);
+  }, [aiResult, filteredQuestions, currentIndex]);
 
   const handleAiSuggest = useCallback(async () => {
     if (!aiResult) return;
-    const q = questions[currentIndex];
+    const q = filteredQuestions[currentIndex];
     if (!q) return;
     setAiSuggesting(true);
     try {
@@ -146,10 +203,10 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     } finally {
       setAiSuggesting(false);
     }
-  }, [aiResult, questions, currentIndex]);
+  }, [aiResult, filteredQuestions, currentIndex]);
 
   const handleAiRefine = useCallback(async () => {
-    const q = questions[currentIndex];
+    const q = filteredQuestions[currentIndex];
     if (!q) return;
     setRefinePopupOpen(true);
     setRefineLoading(true);
@@ -176,11 +233,11 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     } finally {
       setRefineLoading(false);
     }
-  }, [questions, currentIndex, settings.aiRefinePrompt]);
+  }, [filteredQuestions, currentIndex, settings.aiRefinePrompt]);
 
   const handleRefineAdopt = useCallback(async () => {
     if (!refineResult) return;
-    const q = questions[currentIndex];
+    const q = filteredQuestions[currentIndex];
     if (!q) return;
     setRefineAdopting(true);
     try {
@@ -210,17 +267,20 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     } finally {
       setRefineAdopting(false);
     }
-  }, [refineResult, questions, currentIndex]);
+  }, [refineResult, filteredQuestions, currentIndex]);
+
+  const goNext = useCallback(() => setCurrentIndex((i) => Math.min(i + 1, filteredQuestions.length - 1)), [filteredQuestions.length]);
+  const goPrev = useCallback(() => setCurrentIndex((i) => Math.max(i - 1, 0)), []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (editingQuestion || aiPopupOpen || refinePopupOpen) return;
-      if (e.key === "ArrowRight" || e.key === "Enter") setCurrentIndex((i) => Math.min(i + 1, questions.length - 1));
-      else if (e.key === "ArrowLeft") setCurrentIndex((i) => Math.max(i - 1, 0));
+      if (e.key === "ArrowRight" || e.key === "Enter") goNext();
+      else if (e.key === "ArrowLeft") goPrev();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [questions.length, editingQuestion, aiPopupOpen, refinePopupOpen]);
+  }, [editingQuestion, aiPopupOpen, refinePopupOpen, goNext, goPrev]);
 
   // Touch swipe
   const touchStartX = useRef<number | null>(null);
@@ -233,55 +293,59 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     if (touchStartX.current === null || touchStartY.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    // Ignore if mostly vertical (scrolling)
-    if (Math.abs(dy) > Math.abs(dx)) return;
-    if (Math.abs(dx) < 50) return;
-    if (dx < 0) setCurrentIndex((i) => Math.min(i + 1, questions.length - 1));
-    else setCurrentIndex((i) => Math.max(i - 1, 0));
     touchStartX.current = null;
     touchStartY.current = null;
-  }, [questions.length]);
+    if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 50) return;
+    if (dx < 0) goNext();
+    else goPrev();
+  }, [goNext, goPrev]);
 
-  const q = questions[currentIndex];
+  const q = filteredQuestions[currentIndex];
   const isFirst = currentIndex === 0;
-  const isLast = currentIndex === questions.length - 1;
-  const sliderPct = questions.length > 1
-    ? `${(currentIndex / (questions.length - 1)) * 100}%`
+  const isLast = currentIndex === filteredQuestions.length - 1;
+  const sliderPct = filteredQuestions.length > 1
+    ? `${(currentIndex / (filteredQuestions.length - 1)) * 100}%`
     : "0%";
+
+  if (!q) {
+    return (
+      <div className="h-screen flex flex-col overflow-hidden bg-[#f8f9fb]">
+        <QuizHeader
+          examId={examId}
+          examName={examName}
+          mode="answers"
+          activeCategory={activeCategory}
+          totalCorrect={totalCorrect}
+          totalQuestions={questions.length}
+          overallRate={overallRate}
+          streak={streak}
+          filter={filter as "all" | "continue" | "wrong"}
+          onFilterChange={(f) => setFilter(f === "continue" ? "all" : f)}
+          wrongCount={wrongCount}
+        />
+        <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+          {t("noWrongAnswers")}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#f8f9fb]">
       {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <Link href={`/exam/${encodeURIComponent(examId)}`} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors shrink-0">
-            <ArrowLeft size={14} />
-          </Link>
-          <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
-            <BookOpenCheck size={13} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate">{examName}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => { settings.audioMode ? updateSettings({ audioMode: false }) : updateSettings({ audioMode: true }); }}
-            className="p-1.5 rounded-lg transition-colors text-gray-300 hover:text-gray-600 hover:bg-gray-100"
-            title={settings.audioMode ? "Audio mode on (click to turn off)" : "Audio mode off (click to turn on)"}
-          >
-            {settings.audioMode ? <Volume2 size={13} className="text-sky-500" /> : <VolumeOff size={13} />}
-          </button>
-          <button
-            onClick={() => setEditingQuestion(q)}
-            className="flex items-center gap-1 text-xs text-gray-300 hover:text-blue-500 transition-colors"
-            title="Edit question"
-          >
-            <Pencil size={12} />
-          </button>
-          <span className="text-xs tabular-nums text-gray-400">
-            {currentIndex + 1} / {questions.length}
-          </span>
-        </div>
-      </header>
+      <QuizHeader
+        examId={examId}
+        examName={examName}
+        mode="answers"
+        activeCategory={activeCategory}
+        totalCorrect={totalCorrect}
+        totalQuestions={questions.length}
+        overallRate={overallRate}
+        streak={streak}
+        filter={filter as "all" | "continue" | "wrong"}
+        onFilterChange={(f) => setFilter(f === "continue" ? "all" : f)}
+        wrongCount={wrongCount}
+      />
 
       {/* Main */}
       <div
@@ -365,7 +429,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
       {/* Footer */}
       <footer className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 pt-3 pb-2.5">
         <div className="flex items-end gap-px mb-2.5">
-          {questions.map((_, i) => (
+          {filteredQuestions.map((_, i) => (
             <button
               key={i}
               onClick={() => setCurrentIndex(i)}
@@ -377,7 +441,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
+            onClick={goPrev}
             disabled={isFirst}
             className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-20 transition-all"
           >
@@ -386,14 +450,14 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           <input
             type="range"
             min={0}
-            max={questions.length - 1}
+            max={filteredQuestions.length - 1}
             value={currentIndex}
             onChange={(e) => setCurrentIndex(Number(e.target.value))}
             className="quiz-slider flex-1"
             style={{ "--fill": sliderPct } as React.CSSProperties}
           />
           <button
-            onClick={() => setCurrentIndex((i) => Math.min(i + 1, questions.length - 1))}
+            onClick={goNext}
             disabled={isLast}
             className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-20 transition-all"
           >
