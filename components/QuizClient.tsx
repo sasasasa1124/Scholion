@@ -133,15 +133,16 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     if (revealed || submitted) return;
     const q = filteredQuestions[currentIndex];
     if (!q) return;
-    speak(buildQuestionText(q));
-    // 解答・次問題のチャンクを全部プリフェッチ（gap をなくす）
-    prefetch(buildAnswerRevealText(q, settings.language)[0]);
+    // 必要な全チャンクをプリフェッチしてから再生
+    prefetch(buildQuestionText(q)[1]);  // 選択肢（現在問題）
+    prefetch(buildAnswerRevealText(q, settings.language)[0]);  // 解答（現在問題）
     const next = filteredQuestions[currentIndex + 1];
     if (next) {
       prefetch(buildQuestionText(next)[0]);
       prefetch(buildQuestionText(next)[1]);
       prefetch(buildAnswerRevealText(next, settings.language)[0]);
     }
+    speak(buildQuestionText(q));
     return () => { stop(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, mode, speak, stop, prefetch, revealed, submitted, settings.language]);

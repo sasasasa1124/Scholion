@@ -62,9 +62,6 @@ export function useAudio() {
       const token = Symbol();
       speakingTokenRef.current = token;
 
-      // 全チャンクを並行で fetch 開始（再生中に次チャンクが完成 → gap なし）
-      const fetchPromises = texts.map((text) => fetchAudio(text).catch(() => null));
-
       for (let i = 0; i < texts.length; i++) {
         if (speakingTokenRef.current !== token) break;
 
@@ -73,7 +70,7 @@ export function useAudio() {
           const isCached = audioCache.has(texts[0]) || inFlight.has(texts[0]);
           if (!isCached) setLoading(true);
         }
-        const objectUrl = await fetchPromises[i];
+        const objectUrl = await fetchAudio(texts[i]);
         setLoading(false);
         if (!objectUrl || speakingTokenRef.current !== token) break;
 
