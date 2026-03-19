@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Clock, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, CheckCircle2 } from "lucide-react";
 import type { Question } from "@/lib/types";
 import QuizQuestion from "./QuizQuestion";
+import QuizHeader from "./QuizHeader";
 import PageHeader from "./PageHeader";
 
 interface Props {
@@ -27,6 +28,8 @@ export default function MockExamClient({ questions, examId, examName, timeLimitM
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionSavedRef = useRef(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const backHref = `/exam/${encodeURIComponent(examId)}`;
 
@@ -89,6 +92,25 @@ export default function MockExamClient({ questions, examId, examName, timeLimitM
       return { ...prev, [q.id]: cur };
     });
   }, [questions, currentIndex, submitted]);
+
+  const goNext = useCallback(() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1)), [questions.length]);
+  const goPrev = useCallback(() => setCurrentIndex((i) => Math.max(0, i - 1)), []);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 50) return;
+    if (dx < 0) goNext();
+    else goPrev();
+  }, [goNext, goPrev]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -183,17 +205,23 @@ export default function MockExamClient({ questions, examId, examName, timeLimitM
   const timerPct = timeLeft / (timeLimitMinutes * 60);
   const timerRed = timeLeft < 300; // last 5 min
 
+  const timerWidget = (
+    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${timerRed ? "bg-rose-50 border-rose-200 text-rose-600" : "bg-white border-gray-200 text-gray-700"}`}>
+      <Clock size={13} strokeWidth={2} />
+      <span className="text-sm font-semibold tabular-nums">{formatTime(timeLeft)}</span>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
-      <PageHeader
-        back={{ href: backHref }}
-        title={examName}
-        right={
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${timerRed ? "bg-rose-50 border-rose-200 text-rose-600" : "bg-white border-gray-200 text-gray-700"}`}>
-            <Clock size={13} strokeWidth={2} />
-            <span className="text-sm font-semibold tabular-nums">{formatTime(timeLeft)}</span>
-          </div>
-        }
+      <QuizHeader
+        examId={examId}
+        examName={examName}
+        mode="mock"
+        totalCorrect={undefined}
+        totalQuestions={questions.length}
+        overallRate={null}
+        rightExtra={timerWidget}
       />
 
       {/* Timer bar */}
@@ -221,7 +249,11 @@ export default function MockExamClient({ questions, examId, examName, timeLimitM
       </div>
 
       {/* Question */}
-      <div className="flex-1 px-4 sm:px-8 pb-4 max-w-2xl mx-auto w-full">
+      <div
+        className="flex-1 px-4 sm:px-8 pb-4 max-w-2xl mx-auto w-full"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         <div className="mb-3 flex items-center gap-2">
           <span className="text-xs text-gray-400">Question {currentIndex + 1} / {questions.length}</span>
           {q.isMultiple && (
@@ -241,7 +273,7 @@ export default function MockExamClient({ questions, examId, examName, timeLimitM
       {/* Footer nav */}
       <div className="px-4 sm:px-8 py-4 border-t border-gray-100 flex items-center gap-3 max-w-2xl mx-auto w-full">
         <button
-          onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+          onClick={goPrev}
           disabled={currentIndex === 0}
           className="h-10 w-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 transition-colors shrink-0"
         >
@@ -250,7 +282,7 @@ export default function MockExamClient({ questions, examId, examName, timeLimitM
 
         {currentIndex < questions.length - 1 ? (
           <button
-            onClick={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
+            onClick={goNext}
             className="flex-1 h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors flex items-center justify-center gap-1.5"
           >
             Next <ChevronRight size={14} />
