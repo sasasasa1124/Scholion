@@ -25,8 +25,8 @@ export default function SuggestPanel({ questionId, choices }: Props) {
 
   useEffect(() => {
     fetch(`/api/suggestions?questionId=${encodeURIComponent(questionId)}&count=1`)
-      .then((r) => r.json())
-      .then((data: { count: number }) => setCount(data.count))
+      .then((r) => r.json() as Promise<{ count: number }>)
+      .then((data) => setCount(data.count))
       .catch(() => {/* ignore */});
   }, [questionId]);
 
