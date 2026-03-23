@@ -856,6 +856,7 @@ export async function createSuggestion(
     aiModel: data.aiModel ?? null,
     comment: data.comment ?? null,
     createdBy,
+    createdAt: new Date().toISOString(),
   });
 
   // Fetch last inserted row (D1 doesn't support RETURNING reliably)
@@ -867,4 +868,33 @@ export async function createSuggestion(
 
   if (!row) throw new Error("Failed to retrieve created suggestion");
   return rowToSuggestion(row);
+}
+
+export async function getSuggestionCount(questionId: string): Promise<number> {
+  const db = getDrizzle();
+  if (!db) return 0;
+
+  const [row] = await db.select({ count: sql<number>`count(*)` })
+    .from(suggestionsTable)
+    .where(eq(suggestionsTable.questionId, questionId));
+
+  return row?.count ?? 0;
+}
+
+export async function getSuggestionById(id: number): Promise<Suggestion | null> {
+  const db = getDrizzle();
+  if (!db) return null;
+
+  const [row] = await db.select()
+    .from(suggestionsTable)
+    .where(eq(suggestionsTable.id, id));
+
+  return row ? rowToSuggestion(row) : null;
+}
+
+export async function deleteSuggestion(id: number): Promise<void> {
+  const db = getDrizzle();
+  if (!db) throw new Error("DB not available");
+
+  await db.delete(suggestionsTable).where(eq(suggestionsTable.id, id));
 }

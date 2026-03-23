@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { ChevronDown, ChevronUp, Plus, Loader2, Bot, User } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { ChevronDown, ChevronUp, Plus, Loader2, Bot, User, Trash2, Check } from "lucide-react";
 import type { Choice, Suggestion } from "@/lib/types";
 import { useSettings } from "@/lib/settings-context";
 
@@ -14,6 +14,7 @@ export default function SuggestPanel({ questionId, choices }: Props) {
   const { t } = useSettings();
   const [expanded, setExpanded] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const [count, setCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [formAnswers, setFormAnswers] = useState<string[]>([]);
@@ -22,6 +23,13 @@ export default function SuggestPanel({ questionId, choices }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
+  useEffect(() => {
+    fetch(`/api/suggestions?questionId=${encodeURIComponent(questionId)}&count=1`)
+      .then((r) => r.json())
+      .then((data: { count: number }) => setCount(data.count))
+      .catch(() => {/* ignore */});
+  }, [questionId]);
+
   const load = useCallback(async () => {
     if (suggestions !== null) return;
     setLoading(true);
@@ -29,6 +37,7 @@ export default function SuggestPanel({ questionId, choices }: Props) {
       const res = await fetch(`/api/suggestions?questionId=${encodeURIComponent(questionId)}`);
       const data = await res.json() as Suggestion[];
       setSuggestions(data);
+      setCount(data.length);
     } catch {
       setSuggestions([]);
     } finally {
@@ -65,6 +74,7 @@ export default function SuggestPanel({ questionId, choices }: Props) {
       const data = await res.json() as { ok: boolean; suggestion: Suggestion };
       if (data.ok) {
         setSuggestions((prev) => [data.suggestion, ...(prev ?? [])]);
+        setCount((c) => (c !== null ? c + 1 : 1));
         setShowForm(false);
         setFormAnswers([]);
         setFormExplanation("");
@@ -77,7 +87,17 @@ export default function SuggestPanel({ questionId, choices }: Props) {
     }
   };
 
-  const count = suggestions?.length ?? 0;
+  const handleDelete = (id: number) => {
+    setSuggestions((prev) => prev?.filter((s) => s.id !== id) ?? null);
+    setCount((c) => (c !== null ? c - 1 : null));
+  };
+
+  const handleAdopt = (id: number) => {
+    setSuccessMsg(t("suggestSuccess"));
+    setTimeout(() => setSuccessMsg(""), 3000);
+    setSuggestions((prev) => prev?.filter((s) => s.id !== id) ?? null);
+    setCount((c) => (c !== null ? c - 1 : null));
+  };
 
   return (
     <div className="border-t border-gray-100 mt-4 pt-4">
@@ -87,7 +107,7 @@ export default function SuggestPanel({ questionId, choices }: Props) {
         className="flex items-center justify-between w-full text-left group"
       >
         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider group-hover:text-gray-500 transition-colors">
-          {t("alternatives")}{suggestions !== null ? ` (${count})` : ""}
+          {t("alternatives")}{count !== null ? ` (${count})` : ""}
         </span>
         {expanded ? (
           <ChevronUp size={14} className="text-gray-400" />
@@ -109,7 +129,7 @@ export default function SuggestPanel({ questionId, choices }: Props) {
           )}
 
           {!loading && suggestions?.map((s) => (
-            <SuggestionCard key={s.id} suggestion={s} t={t} />
+            <SuggestionCard key={s.id} suggestion={s} t={t} onDelete={handleDelete} onAdopt={handleAdopt} />
           ))}
 
           {successMsg && (
@@ -201,16 +221,43 @@ export default function SuggestPanel({ questionId, choices }: Props) {
 function SuggestionCard({
   suggestion,
   t,
+  onDelete,
+  onAdopt,
 }: {
   suggestion: Suggestion;
   t: (key: Parameters<typeof import("@/lib/i18n").t>[1]) => string;
+  onDelete: (id: number) => void;
+  onAdopt: (id: number) => void;
 }) {
+  const [deleting, setDeleting] = useState(false);
+  const [adopting, setAdopting] = useState(false);
+
   const isAi = suggestion.type === "ai";
   const author = suggestion.createdBy.split("@")[0];
-  const date = new Date(suggestion.createdAt).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  const rawDate = suggestion.createdAt;
+  const date = rawDate
+    ? new Date(rawDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "";
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetch(`/api/suggestions/${suggestion.id}`, { method: "DELETE" });
+      onDelete(suggestion.id);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleAdopt = async () => {
+    setAdopting(true);
+    try {
+      await fetch(`/api/suggestions/${suggestion.id}/adopt`, { method: "POST" });
+      onAdopt(suggestion.id);
+    } finally {
+      setAdopting(false);
+    }
+  };
 
   return (
     <div className="border border-gray-100 rounded-xl p-3 space-y-2">
@@ -230,8 +277,24 @@ function SuggestionCard({
           <span className="text-[10px] text-gray-400">{suggestion.aiModel}</span>
         )}
         <span className="ml-auto text-[10px] text-gray-400">
-          {author} · {date}
+          {author}{date ? ` · ${date}` : ""}
         </span>
+        <button
+          onClick={handleAdopt}
+          disabled={adopting || deleting}
+          title="Adopt this suggestion"
+          className="p-1 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+        >
+          {adopting ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting || adopting}
+          title="Delete this suggestion"
+          className="p-1 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-40"
+        >
+          {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+        </button>
       </div>
 
       {/* Suggested answers */}
