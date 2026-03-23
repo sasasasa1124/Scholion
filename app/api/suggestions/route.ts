@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSuggestions, createSuggestion } from "@/lib/db";
+import { getSuggestions, getSuggestionCount, createSuggestion } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
 export const runtime = "edge";
@@ -7,6 +7,12 @@ export const runtime = "edge";
 export async function GET(req: NextRequest) {
   const questionId = req.nextUrl.searchParams.get("questionId");
   if (!questionId) return NextResponse.json({ error: "questionId required" }, { status: 400 });
+
+  if (req.nextUrl.searchParams.get("count") === "1") {
+    const count = await getSuggestionCount(questionId);
+    return NextResponse.json({ count });
+  }
+
   const suggestions = await getSuggestions(questionId);
   return NextResponse.json(suggestions);
 }
