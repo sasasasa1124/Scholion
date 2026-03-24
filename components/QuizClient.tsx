@@ -6,7 +6,8 @@ import {
   ArrowLeft, AlertCircle,
   CheckCircle2, XCircle, ChevronLeft, ChevronRight, Pencil, Sparkles, Wand2, Plus, Copy, Loader2,
 } from "lucide-react";
-import type { Question, QuizStats } from "@/lib/types";
+import type { Question, QuizStats, FilterConfig, RichQuizStats } from "@/lib/types";
+import { DEFAULT_FILTER_CONFIG } from "@/lib/types";
 import type { AiExplainResponse } from "@/app/api/ai/explain/route";
 import type { AiRefineResponse } from "@/app/api/ai/refine/route";
 import QuizQuestion from "./QuizQuestion";
@@ -30,7 +31,7 @@ interface Props {
   mode: "quiz" | "review";
   userEmail: string;
   activeCategory: string | null;
-  initialFilter?: "all" | "continue" | "wrong";
+  initialFilter?: "all" | "continue" | "wrong" | "custom";
   invalidatedIds?: string[];
   initialQuestionId?: number;
 }
@@ -74,7 +75,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState<QuizStats>({});
-  const [filter, setFilter] = useState<"all" | "continue" | "wrong">(initialFilter ?? "all");
+  const [filter, setFilter] = useState<"all" | "continue" | "wrong" | "custom">(initialFilter ?? "all");
+  const [filterConfig, setFilterConfig] = useState<FilterConfig>(DEFAULT_FILTER_CONFIG);
+  const [richStats, setRichStats] = useState<RichQuizStats>({});
   const [savedLastQuestionId, setSavedLastQuestionId] = useState<number | null>(null);
   const [excludeDuplicates, setExcludeDuplicates] = useState(true);
   const [userInvalidated, setUserInvalidated] = useState<Set<string>>(() => new Set(initialInvalidatedIds));
@@ -168,6 +171,16 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     setRevealed(false);
   }, [currentIndex, filter, mode]);
 
+  // Fetch rich stats when custom filter is first activated
+  useEffect(() => {
+    if (filter !== "custom" || Object.keys(richStats).length > 0) return;
+    fetch(`/api/scores?examId=${encodeURIComponent(examId)}&rich=1`)
+      .then((r) => r.json() as Promise<RichQuizStats>)
+      .then(setRichStats)
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
   useEffect(() => {
     if (filter === "wrong") {
       setDirection("forward");
@@ -218,6 +231,26 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     if (userInvalidated.has(q.dbId)) return false;
     if (filter === "wrong") {
       return wrongSnapshot ? wrongSnapshot.has(q.id) : stats[String(q.id)] === 0;
+    }
+    if (filter === "custom") {
+      const today = new Date().toISOString().slice(0, 10);
+      const s = richStats[String(q.id)];
+      if (!s) {
+        // Never attempted
+        if (filterConfig.neverAttempted) return true;
+        if (filterConfig.notSeenInDays !== null) return true;
+        return false;
+      }
+      const acc = s.attempts > 0 ? (s.correctCount / s.attempts) * 100 : 0;
+      if (filterConfig.dueForReview && !(s.nextReviewAt && s.nextReviewAt <= today)) return false;
+      if (filterConfig.maxAttempts !== null && s.attempts > filterConfig.maxAttempts) return false;
+      if (filterConfig.maxAccuracy !== null && acc > filterConfig.maxAccuracy) return false;
+      if (filterConfig.notSeenInDays !== null) {
+        if (!s.updatedAt) return true;
+        const days = (Date.now() - new Date(s.updatedAt).getTime()) / 86_400_000;
+        if (days < filterConfig.notSeenInDays) return false;
+      }
+      return true;
     }
     if (excludeDuplicates && q.isDuplicate) return false;
     return true;
@@ -737,6 +770,11 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
         duplicateCount={duplicateCount}
         excludeDuplicates={excludeDuplicates}
         onToggleDuplicates={() => setExcludeDuplicates((v) => !v)}
+        filterConfig={filterConfig}
+        onFilterConfigChange={(cfg) => { setFilterConfig(cfg); setCurrentIndex(0); }}
+        allQuestions={questions}
+        richStats={richStats}
+        customFilterCount={filter === "custom" ? filteredQuestions.length : undefined}
         onReplay={handleReplay}
         audioPlaying={audioPlaying}
       />
