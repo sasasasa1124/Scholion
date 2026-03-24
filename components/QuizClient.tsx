@@ -333,6 +333,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   }, [stats, wrongSnapshot, statsLoaded, filter]);
 
 
+
   const recordAnswer = useCallback((questionId: number, correct: boolean, questionDbId: string, srsQuality?: 1 | 4) => {
     setStats((prev) => {
       const next = { ...prev, [String(questionId)]: correct ? 1 : 0 } as QuizStats;
