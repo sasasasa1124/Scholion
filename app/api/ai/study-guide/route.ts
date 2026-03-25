@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getStudyGuide, upsertStudyGuide, getSetting } from "@/lib/db";
 import { getRequestContext } from "@cloudflare/next-on-pages";
+import { DEFAULT_STUDY_GUIDE_PROMPT } from "@/lib/types";
 
 interface QuestionSummary {
   question: string;
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     language?: string;
     questions: QuestionSummary[];
     userStats?: UserStats;
+    userPrompt?: string;
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { examId, examName, questions, userStats } = body;
+  const { examId, examName, questions, userStats, userPrompt } = body;
   const lang = body.language ?? "en";
 
   // Personalized guides (with userStats) are never cached
@@ -113,36 +115,19 @@ ${categoryRows}
 ${wrongLines}`;
   }
 
-  const prompt = `You are an expert on the "${examName}" certification exam.
-Analyze the ${questions.length} exam questions below (grouped by category) and use Google Search to find the latest official exam guide information. Then produce a comprehensive Study Guide in Markdown format.
-
-## Required output structure
-
-# Study Guide: ${examName}
-
-## Overall Overview
-- Exam overview: number of questions, time limit, passing score, domain weights (use Google Search for the official exam guide)
-- Key topics and recommended study priorities
-
-## Per-Category Questions & Answers
-For each category, write:
-### {Category Name} ({N} questions)
-- Brief summary of what this category tests
-- 2–3 representative Q&As drawn from the question data below (show the question, all answer choices, and highlight the correct answer(s))
-
-${userStats ? `## Your Learning Trends & Wrong Answer Patterns
+  const personalizedSection = userStats ? `## Your Learning Trends & Wrong Answer Patterns
 - Overall accuracy: ${userStats.totalCorrect}/${userStats.totalAttempted} (${userStats.accuracy}%)
 - Per-category breakdown (weakest first)
 - Analysis of wrong answer patterns: which categories/question types need focus
 - Key wrong questions with explanation of the correct answer
-` : ""}---
+` : "";
 
-## Question Data
-${categoryLines.join("\n")}
-${userStatsSection}
-
-Important: Use Google Search to look up "${examName} exam guide" and "${examName} certification" for the latest official information. Limit searches to official Salesforce and MuleSoft sources only (help.salesforce.com, developer.salesforce.com, trailhead.salesforce.com, docs.mulesoft.com).
-${langInstruction[lang] ?? langInstruction["en"]}`;
+  const template = userPrompt || DEFAULT_STUDY_GUIDE_PROMPT;
+  const prompt = template
+    .replace(/{examName}/g, examName)
+    .replace("{questions}", categoryLines.join("\n") + (userStatsSection ? "\n" + userStatsSection : ""))
+    .replace("{userStats}", personalizedSection)
+    .replace("{langInstruction}", langInstruction[lang] ?? langInstruction["en"]);
 
   const ai = new GoogleGenAI({ apiKey });
   const model = (await getSetting("gemini_model")) ?? "gemini-3-flash-preview";

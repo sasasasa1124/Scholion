@@ -222,11 +222,29 @@ export interface RichScoreEntry {
 export type RichQuizStats = { [questionId: string]: RichScoreEntry };
 
 export const DEFAULT_STUDY_GUIDE_PROMPT = `You are an expert on the "{examName}" certification exam.
-Analyze the exam questions provided below (grouped by category) and use Google Search to find the latest relevant official documentation. Then, produce a comprehensive Study Guide in Markdown format. For each category, your guide must cover:
-- Key topics and frequently asked concepts
-- The core knowledge and concepts required to uniquely determine the correct answers
-- Study priorities
-`;
+Analyze the exam questions below (grouped by category) and use Google Search to find the latest official exam guide information. Then produce a comprehensive Study Guide in Markdown format.
+
+## Required output structure
+
+# Study Guide: {examName}
+
+## Overall Overview
+- Exam overview: number of questions, time limit, passing score, domain weights (use Google Search for the official exam guide)
+- Key topics and recommended study priorities
+
+## Per-Category Questions & Answers
+For each category, write:
+### {Category Name} ({N} questions)
+- Brief summary of what this category tests
+- 2–3 representative Q&As drawn from the question data below (show the question, all answer choices, and highlight the correct answer(s))
+{userStats}
+---
+
+## Question Data
+{questions}
+
+Important: Use Google Search to look up "{examName} exam guide" and "{examName} certification" for the latest official information. Limit searches to official Salesforce and MuleSoft sources only (help.salesforce.com, developer.salesforce.com, trailhead.salesforce.com, docs.mulesoft.com).
+{langInstruction}`;
 
 export const DEFAULT_FILL_PROMPT = `You are a Salesforce/MuleSoft certification exam expert with access to Google Search for fact verification.
 
