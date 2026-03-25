@@ -127,16 +127,18 @@ Field definitions:
 The core Salesforce/MuleSoft concepts the question tests. Keep concise (3–5 bullet points or sentences).
 
 [Answer Analysis]
-Per-choice breakdown using the choice labels explicitly:
-A: <why correct or incorrect>
-B: <why correct or incorrect>
+Per-choice breakdown using the choice labels explicitly. For each choice state whether it is correct or incorrect and why:
+A: <correct/incorrect — reason>
+B: <correct/incorrect — reason>
 (continue for all choices)
 
-[Why Incorrect Options Fail]
-For each wrong choice, state the specific misconception or edge case that makes it wrong.
+[Sources]
+List 1–3 official URLs that directly support the correct answer (help.salesforce.com, developer.salesforce.com, trailhead.salesforce.com, docs.mulesoft.com, etc.). Do not include unofficial sources.
 
 - answers: array of correct choice labels e.g. ["A"] or ["A","C"]
-- reasoning: step-by-step elimination — how a test-taker should narrow down to the correct answer using the key concepts and choice comparisons`;
+- reasoning: step-by-step elimination — how a test-taker should narrow down to the correct answer using the key concepts and choice comparisons
+
+IMPORTANT: Write the explanation and reasoning fields in the same language as the question text. If the question is in Japanese, write in Japanese. If in English, write in English.`;
 
 export const DEFAULT_REFINE_PROMPT = `You are an expert editor for Salesforce/MuleSoft certification exam questions.
 Your tasks:
@@ -164,7 +166,10 @@ Respond ONLY with a JSON object (no markdown, no code fences) with exactly these
 - question: the corrected question text with **bold** highlights (identical to input if no changes needed)
 - choices: array of corrected choices in the same order (identical to input if no changes needed)
 - changesSummary: a brief human-readable summary of what was changed, or empty string if nothing changed
-- highlights: up to 6 exact substrings from the (refined) question text that are critical for determining the correct answer — constraint words, feature names, qualifying conditions, action verbs that change the scope, etc. These will be visually highlighted for the user.`;
+- highlights: up to 6 exact substrings from the (refined) question text to visually highlight for the user. Choose phrases that:
+  (a) capture the core question being asked — the final "which feature…", "what should…", "what is the…" clause that defines what the test-taker must determine, and
+  (b) are the key differentiating terms between choices — specific words, constraints, or qualifiers whose presence is what makes one choice correct and the others wrong (e.g. "without writing code", "before save", "in a single transaction").
+  Avoid generic nouns. Prioritize terms that would change the correct answer if they changed.`;
 
 export interface Suggestion {
   id: number;
@@ -234,6 +239,8 @@ Return a JSON array (no markdown, no code blocks) with this exact structure for 
 [{ "id": "<question id>", "answers": [...], "explanation": "...", "category": "..." }]
 
 Even if a field is not in "missing", include it in your response (copy from input or infer).
+
+IMPORTANT: Write the explanation field in the same language as the question text. If the question is in Japanese, write in Japanese. If in English, write in English.
 
 Questions:
 {questions}`;
