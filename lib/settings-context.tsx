@@ -7,6 +7,19 @@ import { t as translate, type TranslationKey } from "./i18n";
 
 const STORAGE_KEY = "user-settings";
 
+/**
+ * If `stored` has the same opening line as `current` but different content,
+ * it is an old version of the same default prompt → upgrade to `current`.
+ * This prevents "(unsaved)" showing after default prompts are updated in code.
+ */
+function upgradeIfOldDefault(stored: string, current: string): string {
+  const s = stored.trim();
+  const c = current.trim();
+  if (!s || s === c) return stored;
+  const sameFirstLine = s.split("\n")[0] === c.split("\n")[0];
+  return sameFirstLine ? current : stored;
+}
+
 interface SettingsContextValue {
   settings: UserSettings;
   updateSettings: (patch: Partial<UserSettings>) => void;
@@ -25,9 +38,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       .then(({ settings: remote }) => {
         // Merge defaults, remote wins
         const merged: UserSettings = { ...DEFAULT_USER_SETTINGS, ...remote };
-        if (!merged.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;
-        if (!merged.aiRefinePrompt) merged.aiRefinePrompt = DEFAULT_USER_SETTINGS.aiRefinePrompt;
-        if (!merged.aiFillPrompt) merged.aiFillPrompt = DEFAULT_USER_SETTINGS.aiFillPrompt;
+        // Upgrade any stored prompts that are old versions of the current defaults
+        merged.aiPrompt = upgradeIfOldDefault(merged.aiPrompt, DEFAULT_USER_SETTINGS.aiPrompt);
+        merged.aiRefinePrompt = upgradeIfOldDefault(merged.aiRefinePrompt, DEFAULT_USER_SETTINGS.aiRefinePrompt);
+        merged.studyGuidePrompt = upgradeIfOldDefault(merged.studyGuidePrompt, DEFAULT_USER_SETTINGS.studyGuidePrompt);
+        merged.aiFillPrompt = upgradeIfOldDefault(merged.aiFillPrompt, DEFAULT_USER_SETTINGS.aiFillPrompt);
         if (!Array.isArray(merged.aiPromptVersions)) merged.aiPromptVersions = [];
         if (!Array.isArray(merged.aiRefinePromptVersions)) merged.aiRefinePromptVersions = [];
         if (!Array.isArray(merged.studyGuidePromptVersions)) merged.studyGuidePromptVersions = [];
@@ -43,9 +58,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           if (raw) {
             const parsed = JSON.parse(raw) as Partial<UserSettings>;
             const merged = { ...DEFAULT_USER_SETTINGS, ...parsed };
-            if (!parsed.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;
-            if (!parsed.aiRefinePrompt) merged.aiRefinePrompt = DEFAULT_USER_SETTINGS.aiRefinePrompt;
-            if (!parsed.aiFillPrompt) merged.aiFillPrompt = DEFAULT_USER_SETTINGS.aiFillPrompt;
+            // Upgrade any stored prompts that are old versions of the current defaults
+            merged.aiPrompt = upgradeIfOldDefault(merged.aiPrompt, DEFAULT_USER_SETTINGS.aiPrompt);
+            merged.aiRefinePrompt = upgradeIfOldDefault(merged.aiRefinePrompt, DEFAULT_USER_SETTINGS.aiRefinePrompt);
+            merged.studyGuidePrompt = upgradeIfOldDefault(merged.studyGuidePrompt, DEFAULT_USER_SETTINGS.studyGuidePrompt);
+            merged.aiFillPrompt = upgradeIfOldDefault(merged.aiFillPrompt, DEFAULT_USER_SETTINGS.aiFillPrompt);
             if (!Array.isArray(merged.aiPromptVersions)) merged.aiPromptVersions = [];
             if (!Array.isArray(merged.aiRefinePromptVersions)) merged.aiRefinePromptVersions = [];
             if (!Array.isArray(merged.studyGuidePromptVersions)) merged.studyGuidePromptVersions = [];

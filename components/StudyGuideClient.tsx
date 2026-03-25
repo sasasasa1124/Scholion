@@ -184,6 +184,7 @@ export default function StudyGuideClient({ questions, examId, examName }: Props)
           examId: userStats ? null : examId,
           examName,
           language: settings.language,
+          userPrompt: settings.studyGuidePrompt,
           questions: questions.map((q) => ({
             question: q.question,
             answers: q.choices.map((c) => `${c.label}. ${c.text}`),

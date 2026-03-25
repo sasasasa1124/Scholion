@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Brain, BookOpen, BookOpenCheck,
   ChevronRight, AlertCircle, TrendingUp, Tag, Timer, History,
-  Pencil, Check, X, Lightbulb, Languages, Sparkles, Loader2,
+  Pencil, Check, X, Lightbulb, Languages, Sparkles, Loader2, Wand2,
 } from "lucide-react";
 import type { CategoryStat, ExamMeta, Question } from "@/lib/types";
 import { useSetHeader } from "@/lib/header-context";
@@ -81,6 +81,11 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
   const [generateTts, setGenerateTts] = useState(false);
   const [ttsProgress, setTtsProgress] = useState<{ done: number; total: number } | null>(null);
 
+  // Wording Fix (bulk refine)
+  const [refineStatus, setRefineStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [refineProgress, setRefineProgress] = useState<{ done: number; total: number } | null>(null);
+  const [refineResult, setRefineResult] = useState<{ refined: number } | null>(null);
+
   const startFill = useCallback(async () => {
     setFillStatus("filling");
     setFillProgress(null);
@@ -136,6 +141,42 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
       setTimeout(() => setFillStatus("idle"), 3000);
     }
   }, [exam.id, settings.aiFillPrompt, generateTts, fetchAudio, settings.language]);
+
+  const startRefine = useCallback(async () => {
+    setRefineStatus("running");
+    setRefineProgress(null);
+    setRefineResult(null);
+    try {
+      const res = await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userPrompt: settings.aiRefinePrompt }),
+      });
+      if (!res.body) { setRefineStatus("error"); return; }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() ?? "";
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          const evt = JSON.parse(part.slice(6)) as { error?: string; done?: number; total?: number; refined?: number };
+          if (evt.error) { setRefineStatus("error"); return; }
+          if (evt.total !== undefined) setRefineProgress({ done: evt.done ?? 0, total: evt.total });
+          if (evt.refined !== undefined) setRefineResult({ refined: evt.refined });
+        }
+      }
+      setRefineStatus("done");
+      setTimeout(() => { setRefineStatus("idle"); setRefineResult(null); }, 4000);
+    } catch {
+      setRefineStatus("error");
+      setTimeout(() => setRefineStatus("idle"), 3000);
+    }
+  }, [exam.id, settings.aiRefinePrompt]);
 
   useEffect(() => {
     if (editingMeta) nameInputRef.current?.focus();
@@ -708,6 +749,34 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Wording Fix (bulk refine) */}
+            <div className="border-t border-gray-100 pt-3">
+              <button
+                onClick={refineStatus === "idle" ? startRefine : undefined}
+                disabled={refineStatus === "running"}
+                title={
+                  refineStatus === "running" ? (refineProgress ? `Refining ${refineProgress.done}/${refineProgress.total}…` : "Starting…")
+                  : refineStatus === "done" ? (refineResult ? `Refined ${refineResult.refined} questions` : "Done")
+                  : refineStatus === "error" ? "Wording Fix failed — click to retry"
+                  : "Fix wording and fact-check all questions with AI"
+                }
+                className={`w-full h-10 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                  refineStatus === "running" ? "border-amber-200 text-amber-500 bg-amber-50"
+                  : refineStatus === "done" ? "border-emerald-200 text-emerald-600 bg-emerald-50"
+                  : refineStatus === "error" ? "border-rose-200 text-rose-500 bg-rose-50"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                {refineStatus === "running"
+                  ? <><Loader2 size={14} className="animate-spin" /> Wording Fix {refineProgress ? `${refineProgress.done}/${refineProgress.total}` : "…"}</>
+                  : refineStatus === "done"
+                  ? <><Wand2 size={14} /> {refineResult ? `Refined ${refineResult.refined}` : "Done"}</>
+                  : refineStatus === "error"
+                  ? <><Wand2 size={14} /> Wording Fix failed</>
+                  : <><Wand2 size={14} /> Wording Fix</>}
+              </button>
             </div>
 
             {/* Translation panel */}
