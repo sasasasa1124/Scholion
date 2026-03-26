@@ -3,7 +3,6 @@ import { getDB, getAllUserSettings, setUserSettings } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 import type { UserSettings } from "@/lib/types";
 
-export const runtime = "edge";
 
 export async function GET() {
   // No DB available (local dev without wrangler) — let client fall back to localStorage

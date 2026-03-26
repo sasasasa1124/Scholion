@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSuggestionById, getQuestionById, updateQuestion } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
-export const runtime = "edge";
 
 export async function POST(
   _req: NextRequest,

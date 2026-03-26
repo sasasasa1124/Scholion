@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSession, getSessionsByExam } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
-export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as {

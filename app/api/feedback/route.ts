@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 interface ImagePayload {
   name: string;

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateExamMeta, renameCategory, deleteExam, getDB } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
-export const runtime = "edge";
 
 export async function PATCH(
   req: NextRequest,
@@ -47,10 +46,10 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  const [userEmail, db] = await Promise.all([getUserEmail(), Promise.resolve(getDB())]);
+  const [userEmail, pg] = await Promise.all([getUserEmail(), Promise.resolve(getDB())]);
 
-  if (db) {
-    const exam = await db.prepare("SELECT created_by FROM exams WHERE id = ?").bind(id).first<{ created_by: string | null }>();
+  if (pg) {
+    const [exam] = await pg<{ created_by: string | null }[]>`SELECT created_by FROM exams WHERE id = ${id}`;
     if (!exam) return NextResponse.json({ error: "not found" }, { status: 404 });
     if (exam.created_by && exam.created_by !== userEmail) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });

@@ -1,9 +1,7 @@
-export const runtime = "edge";
 
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getDB, getSetting } from "@/lib/db";
-import { getRequestContext } from "@cloudflare/next-on-pages";
 import { DEFAULT_FILL_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth";
@@ -42,23 +40,18 @@ export async function POST(
   } catch { /* no body is fine */ }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = getRequestContext() as any;
-  const apiKey = ctx.env?.GEMINI_API_KEY as string | undefined;
+  
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500 });
   }
 
-  const db = getDB();
-  if (!db) {
+  const pg = getDB();
+  if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
 
-  const { results: allRows } = await db
-    .prepare("SELECT id, question_text, options, answers, explanation, category, filled_at FROM questions WHERE exam_id = ? ORDER BY num ASC")
-    .bind(examId)
-    .all<QuestionRow>();
-
-  const allQuestions = allRows ?? [];
+  const allQuestions = await pg<QuestionRow[]>`SELECT id, question_text, options, answers, explanation, category, filled_at FROM questions WHERE exam_id = ${examId} ORDER BY num ASC`;
 
   // Determine which questions need filling
   const candidates = allQuestions.filter((q) => {
@@ -112,7 +105,7 @@ export async function POST(
 
             if (missing.length === 0 && !forceRefill) {
               // Nothing missing — just stamp filled_at and move on
-              await db.prepare("UPDATE questions SET filled_at = datetime('now') WHERE id = ?").bind(q.id).run();
+              await pg`UPDATE questions SET filled_at = NOW() WHERE id = ${q.id}`;
               done++;
               send({ done, total, filled, skipped, failed });
               continue;
@@ -147,34 +140,22 @@ export async function POST(
 
             if (results && results.length > 0) {
               const result = results[0];
-              const setClauses: string[] = [];
-              const binds: unknown[] = [];
+              const newAnswers = missing.includes("answers") && Array.isArray(result.answers) && result.answers.length > 0 ? JSON.stringify(result.answers) : null;
+              const newExplanation = missing.includes("explanation") && result.explanation ? result.explanation : null;
+              const newCategory = missing.includes("category") && result.category ? result.category : null;
 
-              if (missing.includes("answers") && Array.isArray(result.answers) && result.answers.length > 0) {
-                setClauses.push("answers = ?");
-                binds.push(JSON.stringify(result.answers));
-              }
-              if (missing.includes("explanation") && result.explanation) {
-                setClauses.push("explanation = ?");
-                binds.push(result.explanation);
-              }
-              if (missing.includes("category") && result.category) {
-                setClauses.push("category = ?");
-                binds.push(result.category);
-              }
-
-              if (setClauses.length > 0) {
-                setClauses.push("filled_at = datetime('now')");
-                setClauses.push("updated_at = datetime('now')");
-                binds.push(q.id);
-                await db
-                  .prepare(`UPDATE questions SET ${setClauses.join(", ")} WHERE id = ?`)
-                  .bind(...binds)
-                  .run();
+              if (newAnswers !== null || newExplanation !== null || newCategory !== null) {
+                await pg`
+                  UPDATE questions SET
+                    answers = COALESCE(${newAnswers}, answers),
+                    explanation = COALESCE(${newExplanation}, explanation),
+                    category = COALESCE(${newCategory}, category),
+                    filled_at = NOW(), updated_at = NOW()
+                  WHERE id = ${q.id}`;
                 filled++;
               } else {
                 // No fields changed but processed — stamp filled_at
-                await db.prepare("UPDATE questions SET filled_at = datetime('now') WHERE id = ?").bind(q.id).run();
+                await pg`UPDATE questions SET filled_at = NOW() WHERE id = ${q.id}`;
               }
             }
           } catch { failed++; }

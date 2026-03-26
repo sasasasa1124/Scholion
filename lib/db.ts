@@ -4,10 +4,9 @@ import type {
   SessionRecord, Suggestion, UserSettings,
 } from "./types";
 import { DEFAULT_USER_SETTINGS } from "./types";
-import { getRequestContext } from "@cloudflare/next-on-pages";
-import { drizzle } from "drizzle-orm/d1";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, like, and, sql, asc, desc, isNotNull, lte, lt, gte, inArray } from "drizzle-orm";
-import type { D1Database as CloudflareD1 } from "@cloudflare/workers-types";
 import * as schema from "./schema";
 import {
   exams as examsTable, questions as questionsTable, questionHistory,
@@ -16,37 +15,22 @@ import {
   appSettings,
 } from "./schema";
 
-// ── Runtime detection ─────────────────────────────────────────────────────
+// ── Database connection ────────────────────────────────────────────────────
 
-// Minimal stub kept for complex raw-SQL queries that go through db.$client
-export interface D1Result {
-  meta: { last_row_id: number; changes: number };
-}
-export interface D1Database {
-  prepare(query: string): {
-    bind(...values: unknown[]): {
-      all<T = unknown>(): Promise<{ results: T[] }>;
-      first<T = unknown>(): Promise<T | null>;
-      run(): Promise<D1Result>;
-    };
-  };
+let _pg: ReturnType<typeof postgres> | null = null;
+
+/** Returns the raw postgres.js client, or null if DATABASE_URL is not set (local dev without DB). */
+export function getDB() {
+  if (!process.env.DATABASE_URL) return null;
+  if (!_pg) _pg = postgres(process.env.DATABASE_URL);
+  return _pg;
 }
 
-/** Returns the raw D1 binding (used internally by getDrizzle and by complex queries). */
-export function getDB(): D1Database | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getRequestContext() as any).env.DB as D1Database ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Returns a Drizzle instance wrapping D1, or null in local dev. */
+/** Returns a Drizzle instance wrapping PostgreSQL, or null in local dev without DB. */
 function getDrizzle() {
-  const d1 = getDB();
-  if (!d1) return null;
-  return drizzle(d1 as unknown as CloudflareD1, { schema });
+  const pg = getDB();
+  if (!pg) return null;
+  return drizzle(pg, { schema });
 }
 
 // ── CSV fallback (local dev only) ─────────────────────────────────────────
@@ -70,27 +54,21 @@ async function csvQuestions(examId: string): Promise<Question[]> {
 // ── Exam list ──────────────────────────────────────────────────────────────
 
 export async function getExamList(): Promise<ExamMeta[]> {
-  const d1 = getDB();
-  if (!d1) {
-    // csvExamList uses Node.js fs which is unavailable in edge runtime (Cloudflare Workers)
-    if (process.env.NEXT_RUNTIME === "edge") return [];
+  const pg = getDB();
+  if (!pg) {
     return csvExamList();
   }
 
-  // Complex GROUP BY + aggregation — keep as raw SQL via db.$client
-  const result = await d1
-    .prepare(
-      `SELECT e.id, e.name, e.lang, e.tags, COUNT(q.id) AS question_count,
-              SUM(CASE WHEN q.is_duplicate = 1 THEN 1 ELSE 0 END) AS duplicate_count
-       FROM exams e
-       LEFT JOIN questions q ON q.exam_id = e.id
-       GROUP BY e.id
-       ORDER BY e.lang ASC, e.name ASC`
-    )
-    .bind()
-    .all<{ id: string; name: string; lang: string; tags: string | null; question_count: number; duplicate_count: number }>();
+  type Row = { id: string; name: string; lang: string; tags: string | null; question_count: number; duplicate_count: number };
+  const rows = await pg<Row[]>`
+    SELECT e.id, e.name, e.lang, e.tags, COUNT(q.id)::int AS question_count,
+           COALESCE(SUM(CASE WHEN q.is_duplicate = 1 THEN 1 ELSE 0 END), 0)::int AS duplicate_count
+    FROM exams e
+    LEFT JOIN questions q ON q.exam_id = e.id
+    GROUP BY e.id
+    ORDER BY e.lang ASC, e.name ASC`;
 
-  return (result.results ?? []).map((row) => {
+  return rows.map((row) => {
     let tags: string[] = ["Salesforce"];
     try { if (row.tags) tags = JSON.parse(row.tags) as string[]; } catch { /* ignore */ }
     return {
@@ -194,8 +172,8 @@ const QUESTION_COLS = `id, num, question_text, options, answers, explanation, so
   is_duplicate, version, category, created_by, created_at, added_at, updated_at`;
 
 export async function getQuestions(examId: string): Promise<Question[]> {
-  const d1 = getDB();
-  if (!d1) return csvQuestions(examId);
+  const pg = getDB();
+  if (!pg) return csvQuestions(examId);
 
   type Row = {
     id: string; num: number; question_text: string; options: string;
@@ -204,17 +182,13 @@ export async function getQuestions(examId: string): Promise<Question[]> {
     category: string | null; created_by: string; created_at: string | null;
     added_at: string | null; updated_at: string | null;
   };
-  const result = await d1
-    .prepare(`SELECT ${QUESTION_COLS} FROM questions WHERE exam_id = ? ORDER BY num ASC`)
-    .bind(examId)
-    .all<Row>();
-
-  return (result.results ?? []).map(mapQuestionRow);
+  const rows = await pg<Row[]>`SELECT ${pg.unsafe(QUESTION_COLS)} FROM questions WHERE exam_id = ${examId} ORDER BY num ASC`;
+  return rows.map(mapQuestionRow);
 }
 
 export async function getQuestionById(id: string): Promise<Question | null> {
-  const d1 = getDB();
-  if (!d1) return null;
+  const pg = getDB();
+  if (!pg) return null;
 
   type Row = {
     id: string; num: number; question_text: string; options: string;
@@ -223,11 +197,7 @@ export async function getQuestionById(id: string): Promise<Question | null> {
     category: string | null; created_by: string; created_at: string | null;
     added_at: string | null; updated_at: string | null;
   };
-  const row = await d1
-    .prepare(`SELECT ${QUESTION_COLS} FROM questions WHERE id = ?`)
-    .bind(id)
-    .first<Row>();
-
+  const [row] = await pg<Row[]>`SELECT ${pg.unsafe(QUESTION_COLS)} FROM questions WHERE id = ${id}`;
   if (!row) return null;
   return mapQuestionRow(row);
 }
@@ -245,37 +215,24 @@ export interface QuestionUpdate {
 }
 
 export async function updateQuestion(id: string, data: QuestionUpdate, changedBy: string): Promise<void> {
-  const d1 = getDB();
-  if (!d1) throw new Error("DB not available in local dev");
+  const pg = getDB();
+  if (!pg) throw new Error("DB not available in local dev");
 
-  const current = await d1
-    .prepare(`SELECT question_text, options, answers, explanation, version FROM questions WHERE id = ?`)
-    .bind(id)
-    .first<{ question_text: string; options: string; answers: string; explanation: string; version: number }>();
-
+  type CurrentRow = { question_text: string; options: string; answers: string; explanation: string; version: number };
+  const [current] = await pg<CurrentRow[]>`SELECT question_text, options, answers, explanation, version FROM questions WHERE id = ${id}`;
   if (!current) throw new Error(`Question ${id} not found`);
 
-  await d1
-    .prepare(
-      `INSERT INTO question_history (question_id, question_text, options, answers, explanation, version, changed_by, change_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(id, current.question_text, current.options, current.answers, current.explanation, current.version, changedBy, data.change_reason)
-    .run();
+  await pg`
+    INSERT INTO question_history (question_id, question_text, options, answers, explanation, version, changed_by, change_reason)
+    VALUES (${id}, ${current.question_text}, ${current.options}, ${current.answers}, ${current.explanation}, ${current.version}, ${changedBy}, ${data.change_reason})`;
 
-  await d1
-    .prepare(
-      `UPDATE questions
-       SET question_text = ?, options = ?, answers = ?, explanation = ?, source = ?,
-           explanation_sources = ?, version = version + 1, updated_at = datetime('now')
-       WHERE id = ?`
-    )
-    .bind(
-      data.question_text, JSON.stringify(data.options), JSON.stringify(data.answers),
-      data.explanation, data.source ?? "",
-      JSON.stringify(data.explanation_sources ?? []), id
-    )
-    .run();
+  await pg`
+    UPDATE questions
+    SET question_text = ${data.question_text}, options = ${JSON.stringify(data.options)},
+        answers = ${JSON.stringify(data.answers)}, explanation = ${data.explanation},
+        source = ${data.source ?? ""}, explanation_sources = ${JSON.stringify(data.explanation_sources ?? [])},
+        version = version + 1, updated_at = NOW()
+    WHERE id = ${id}`;
 }
 
 export async function setDuplicate(id: string, isDuplicate: boolean): Promise<void> {
@@ -287,17 +244,13 @@ export async function setDuplicate(id: string, isDuplicate: boolean): Promise<vo
 }
 
 export async function getUserInvalidatedIds(userEmail: string, examId: string): Promise<string[]> {
-  const d1 = getDB();
-  if (!d1) return [];
-  const result = await d1
-    .prepare(
-      `SELECT u.question_id FROM user_invalidated_questions u
-       JOIN questions q ON q.id = u.question_id
-       WHERE u.user_email = ? AND q.exam_id = ?`
-    )
-    .bind(userEmail, examId)
-    .all<{ question_id: string }>();
-  return result.results.map((r) => r.question_id);
+  const pg = getDB();
+  if (!pg) return [];
+  const rows = await pg<{ question_id: string }[]>`
+    SELECT u.question_id FROM user_invalidated_questions u
+    JOIN questions q ON q.id = u.question_id
+    WHERE u.user_email = ${userEmail} AND q.exam_id = ${examId}`;
+  return rows.map((r) => r.question_id);
 }
 
 export async function toggleUserInvalidated(questionId: string, userEmail: string): Promise<boolean> {
@@ -361,28 +314,19 @@ export interface QuestionCreate {
 }
 
 export async function createQuestion(examId: string, data: QuestionCreate, createdBy: string): Promise<Question> {
-  const d1 = getDB();
-  if (!d1) throw new Error("DB not available in local dev");
+  const pg = getDB();
+  if (!pg) throw new Error("DB not available in local dev");
 
-  const maxRow = await d1
-    .prepare("SELECT COALESCE(MAX(num), 0) AS max_num FROM questions WHERE exam_id = ?")
-    .bind(examId)
-    .first<{ max_num: number }>();
+  const [maxRow] = await pg<{ max_num: number }[]>`SELECT COALESCE(MAX(num), 0)::int AS max_num FROM questions WHERE exam_id = ${examId}`;
   const num = (maxRow?.max_num ?? 0) + 1;
   const id = `${examId}__${num}`;
 
-  await d1
-    .prepare(
-      `INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source,
-                              explanation_sources, created_by, created_at, added_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-    .bind(
-      id, examId, num, data.question_text, JSON.stringify(data.options),
-      JSON.stringify(data.answers), data.explanation, data.source,
-      JSON.stringify(data.explanation_sources ?? []), createdBy
-    )
-    .run();
+  await pg`
+    INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source,
+                           explanation_sources, created_by, created_at, added_at)
+    VALUES (${id}, ${examId}, ${num}, ${data.question_text}, ${JSON.stringify(data.options)},
+            ${JSON.stringify(data.answers)}, ${data.explanation}, ${data.source},
+            ${JSON.stringify(data.explanation_sources ?? [])}, ${createdBy}, NOW(), NOW())`;
 
   const created = await getQuestionById(id);
   if (!created) throw new Error("Failed to retrieve created question");
@@ -465,7 +409,7 @@ export async function saveScore(userEmail: string, examId: string, questionNum: 
     .values({
       userEmail, questionId, lastCorrect,
       attempts: 1, correctCount: correctDelta,
-      updatedAt: sql`datetime('now')` as unknown as string,
+      updatedAt: sql`NOW()` as unknown as string,
     })
     .onConflictDoUpdate({
       target: [scores.userEmail, scores.questionId],
@@ -473,7 +417,7 @@ export async function saveScore(userEmail: string, examId: string, questionNum: 
         lastCorrect,
         attempts: sql`${scores.attempts} + 1`,
         correctCount: sql`${scores.correctCount} + ${correctDelta}`,
-        updatedAt: sql`datetime('now')`,
+        updatedAt: sql`NOW()`,
       },
     });
 }
@@ -481,26 +425,21 @@ export async function saveScore(userEmail: string, examId: string, questionNum: 
 // ── Category stats ───────────────────────────────────────────────────────────
 
 export async function getCategoryStats(userEmail: string, examId: string): Promise<CategoryStat[]> {
-  const d1 = getDB();
-  if (!d1) return [];
+  const pg = getDB();
+  if (!pg) return [];
 
-  const result = await d1
-    .prepare(
-      `SELECT
-         q.category,
-         COUNT(q.id) AS total,
-         COUNT(s.question_id) AS attempted,
-         COALESCE(SUM(s.last_correct), 0) AS correct_count
-       FROM questions q
-       LEFT JOIN scores s ON s.question_id = q.id AND s.user_email = ?
-       WHERE q.exam_id = ?
-       GROUP BY q.category
-       ORDER BY q.category`
-    )
-    .bind(userEmail, examId)
-    .all<{ category: string | null; total: number; attempted: number; correct_count: number }>();
+  const rows = await pg<{ category: string | null; total: number; attempted: number; correct_count: number }[]>`
+    SELECT q.category,
+           COUNT(q.id)::int AS total,
+           COUNT(s.question_id)::int AS attempted,
+           COALESCE(SUM(s.last_correct), 0)::int AS correct_count
+    FROM questions q
+    LEFT JOIN scores s ON s.question_id = q.id AND s.user_email = ${userEmail}
+    WHERE q.exam_id = ${examId}
+    GROUP BY q.category
+    ORDER BY q.category`;
 
-  return (result.results ?? []).map((row) => ({
+  return rows.map((row) => ({
     category: row.category,
     total: row.total,
     attempted: row.attempted,
@@ -519,7 +458,7 @@ export async function createSession(
   await db.insert(sessions)
     .values({
       id: sessionId, userEmail, examId, mode, filter,
-      startedAt: sql`datetime('now')` as unknown as string,
+      startedAt: sql`NOW()` as unknown as string,
       questionCount,
     })
     .onConflictDoNothing();
@@ -529,7 +468,7 @@ export async function completeSession(sessionId: string, correctCount: number): 
   const db = getDrizzle();
   if (!db) return;
   await db.update(sessions)
-    .set({ completedAt: sql`datetime('now')` as unknown as string, correctCount })
+    .set({ completedAt: sql`NOW()` as unknown as string, correctCount })
     .where(eq(sessions.id, sessionId));
 }
 
@@ -539,7 +478,7 @@ export async function addSessionAnswer(sessionId: string, questionId: string, is
   await db.insert(sessionAnswers).values({
     sessionId, questionId,
     isCorrect: isCorrect ? 1 : 0,
-    answeredAt: sql`datetime('now')` as unknown as string,
+    answeredAt: sql`NOW()` as unknown as string,
   });
 }
 
@@ -572,29 +511,21 @@ export async function getDailyProgress(userEmail: string): Promise<{
   todayCount: number;
   activeDays: string[];
 }> {
-  const d1 = getDB();
-  if (!d1) return { todayCount: 0, activeDays: [] };
+  const pg = getDB();
+  if (!pg) return { todayCount: 0, activeDays: [] };
 
-  const todayRow = await d1
-    .prepare(
-      `SELECT COALESCE(SUM(question_count), 0) as cnt
-       FROM sessions WHERE user_email = ? AND date(started_at) = date('now')`
-    )
-    .bind(userEmail)
-    .first<{ cnt: number }>();
+  const [todayRow] = await pg<{ cnt: number }[]>`
+    SELECT COALESCE(SUM(question_count), 0)::int AS cnt
+    FROM sessions WHERE user_email = ${userEmail} AND started_at::date = CURRENT_DATE`;
 
-  const daysResult = await d1
-    .prepare(
-      `SELECT DISTINCT date(started_at) as day
-       FROM sessions WHERE user_email = ?
-       ORDER BY day DESC LIMIT 90`
-    )
-    .bind(userEmail)
-    .all<{ day: string }>();
+  const dayRows = await pg<{ day: string }[]>`
+    SELECT DISTINCT started_at::date::text AS day
+    FROM sessions WHERE user_email = ${userEmail}
+    ORDER BY day DESC LIMIT 90`;
 
   return {
     todayCount: todayRow?.cnt ?? 0,
-    activeDays: (daysResult.results ?? []).map((r) => r.day),
+    activeDays: dayRows.map((r) => r.day),
   };
 }
 
@@ -634,7 +565,7 @@ export async function saveSRSScore(userEmail: string, questionDbId: string, qual
       userEmail, questionId: questionDbId, lastCorrect,
       attempts: 1, correctCount: lastCorrect,
       intervalDays: newInterval, easeFactor: newEF, nextReviewAt,
-      updatedAt: sql`datetime('now')` as unknown as string,
+      updatedAt: sql`NOW()` as unknown as string,
     })
     .onConflictDoUpdate({
       target: [scores.userEmail, scores.questionId],
@@ -645,7 +576,7 @@ export async function saveSRSScore(userEmail: string, questionDbId: string, qual
         intervalDays: newInterval,
         easeFactor: newEF,
         nextReviewAt,
-        updatedAt: sql`datetime('now')`,
+        updatedAt: sql`NOW()`,
       },
     });
 }
@@ -672,20 +603,18 @@ export async function getDueCount(userEmail: string, examId: string): Promise<nu
 // ── All scores (cross-exam) ─────────────────────────────────────────────────
 
 export async function getAllScores(userEmail: string): Promise<Record<string, { answered: number; correct: number }>> {
-  const db = getDrizzle();
-  if (!db) return {};
-
   // Aggregate per-exam using the examId prefix (format: "examId__questionNum")
-  const rows = await db.all<{ exam_id: string; answered: number; correct: number }>(sql`
+  const pg = getDB();
+  if (!pg) return {};
+  const rows = await pg<{ exam_id: string; answered: number; correct: number }[]>`
     SELECT
-      substr(question_id, 1, instr(question_id, '__') - 1) AS exam_id,
-      COUNT(*) AS answered,
-      SUM(CASE WHEN last_correct = 1 THEN 1 ELSE 0 END) AS correct
+      SPLIT_PART(question_id, '__', 1) AS exam_id,
+      COUNT(*)::int AS answered,
+      SUM(CASE WHEN last_correct = 1 THEN 1 ELSE 0 END)::int AS correct
     FROM scores
     WHERE user_email = ${userEmail}
-      AND instr(question_id, '__') > 0
-    GROUP BY exam_id
-  `);
+      AND STRPOS(question_id, '__') > 0
+    GROUP BY exam_id`;
 
   const statsMap: Record<string, { answered: number; correct: number }> = {};
   for (const row of rows) {
@@ -748,24 +677,22 @@ export async function setUserSettings(userEmail: string, settings: Partial<UserS
   const entries = Object.entries(settings);
   if (!entries.length) return;
 
-  const stmts = entries.map(([key, value]) => {
-    const serialized = (Array.isArray(value) || (typeof value === "object" && value !== null))
-      ? JSON.stringify(value)
-      : String(value);
-    return db.insert(userSettings)
-      .values({
-        userEmail, key, value: serialized,
-        updatedAt: sql`datetime('now')` as unknown as string,
-      })
-      .onConflictDoUpdate({
-        target: [userSettings.userEmail, userSettings.key],
-        set: { value: serialized, updatedAt: sql`datetime('now')` },
-      });
+  await db.transaction(async (tx) => {
+    for (const [key, value] of entries) {
+      const serialized = (Array.isArray(value) || (typeof value === "object" && value !== null))
+        ? JSON.stringify(value)
+        : String(value);
+      await tx.insert(userSettings)
+        .values({
+          userEmail, key, value: serialized,
+          updatedAt: sql`NOW()` as unknown as string,
+        })
+        .onConflictDoUpdate({
+          target: [userSettings.userEmail, userSettings.key],
+          set: { value: serialized, updatedAt: sql`NOW()` },
+        });
+    }
   });
-
-  // Execute all upserts atomically in a single D1 batch (avoids N round-trips)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).batch(stmts);
 }
 
 // ── User snapshots ──────────────────────────────────────────────────────────
@@ -828,17 +755,13 @@ export async function saveSnapshot(
     await db.insert(userSnapshots).values({ userEmail, examId, ts, correct, total, accuracy });
 
     // Keep only last 60 snapshots per exam
-    const d1 = getDB();
-    if (d1) {
-      await d1
-        .prepare(
-          `DELETE FROM user_snapshots WHERE user_email = ? AND exam_id = ? AND id NOT IN (
-             SELECT id FROM user_snapshots WHERE user_email = ? AND exam_id = ?
-             ORDER BY ts DESC LIMIT 60
-           )`
-        )
-        .bind(userEmail, examId, userEmail, examId)
-        .run();
+    const pg2 = getDB();
+    if (pg2) {
+      await pg2`
+        DELETE FROM user_snapshots WHERE user_email = ${userEmail} AND exam_id = ${examId} AND id NOT IN (
+          SELECT id FROM user_snapshots WHERE user_email = ${userEmail} AND exam_id = ${examId}
+          ORDER BY ts DESC LIMIT 60
+        )`;
     }
   }
 }
@@ -872,10 +795,10 @@ export async function upsertStudyGuide(examId: string, markdown: string): Promis
   if (!db) return;
 
   await db.insert(studyGuides)
-    .values({ examId, markdown, generatedAt: sql`datetime('now')` as unknown as string })
+    .values({ examId, markdown, generatedAt: sql`NOW()` as unknown as string })
     .onConflictDoUpdate({
       target: studyGuides.examId,
-      set: { markdown, generatedAt: sql`datetime('now')` },
+      set: { markdown, generatedAt: sql`NOW()` },
     });
 }
 
@@ -898,10 +821,10 @@ export async function setSetting(key: string, value: string): Promise<void> {
   if (!db) return;
 
   await db.insert(appSettings)
-    .values({ key, value, updatedAt: sql`datetime('now')` as unknown as string })
+    .values({ key, value, updatedAt: sql`NOW()` as unknown as string })
     .onConflictDoUpdate({
       target: appSettings.key,
-      set: { value, updatedAt: sql`datetime('now')` },
+      set: { value, updatedAt: sql`NOW()` },
     });
 }
 

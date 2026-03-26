@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
@@ -6,7 +5,6 @@ import { z } from "zod";
 import type { Choice } from "@/lib/types";
 import { DEFAULT_REFINE_PROMPT } from "@/lib/types";
 import { getSetting } from "@/lib/db";
-import { getRequestContext } from "@cloudflare/next-on-pages";
 import { parseAiJson } from "@/lib/ai-json";
 
 const ChoiceSchema = z.object({
@@ -32,7 +30,7 @@ export async function POST(req: NextRequest) {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apiKey = (getRequestContext() as any).env?.GEMINI_API_KEY as string | undefined;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
   }

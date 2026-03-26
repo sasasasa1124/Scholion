@@ -2,9 +2,9 @@
  * Drizzle ORM schema — mirrors the existing D1 database structure.
  * Source of truth for Drizzle Kit migrations going forward.
  */
-import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, real, primaryKey, serial } from "drizzle-orm/pg-core";
 
-export const exams = sqliteTable("exams", {
+export const exams = pgTable("exams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   lang: text("lang").notNull(),
@@ -12,7 +12,7 @@ export const exams = sqliteTable("exams", {
   createdBy: text("created_by"),
 });
 
-export const questions = sqliteTable("questions", {
+export const questions = pgTable("questions", {
   id: text("id").primaryKey(),
   examId: text("exam_id").notNull().references(() => exams.id),
   num: integer("num").notNull(),
@@ -31,8 +31,8 @@ export const questions = sqliteTable("questions", {
   updatedAt: text("updated_at"),
 });
 
-export const questionHistory = sqliteTable("question_history", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const questionHistory = pgTable("question_history", {
+  id: serial("id").primaryKey(),
   questionId: text("question_id").notNull(),
   questionText: text("question_text").notNull(),
   options: text("options").notNull(),
@@ -44,7 +44,7 @@ export const questionHistory = sqliteTable("question_history", {
   changeReason: text("change_reason"),
 });
 
-export const scores = sqliteTable("scores", {
+export const scores = pgTable("scores", {
   userEmail: text("user_email").notNull(),
   questionId: text("question_id").notNull(),
   lastCorrect: integer("last_correct").notNull(),
@@ -56,7 +56,7 @@ export const scores = sqliteTable("scores", {
   updatedAt: text("updated_at"),
 }, (t) => [primaryKey({ columns: [t.userEmail, t.questionId] })]);
 
-export const sessions = sqliteTable("sessions", {
+export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   examId: text("exam_id").notNull(),
@@ -68,22 +68,22 @@ export const sessions = sqliteTable("sessions", {
   correctCount: integer("correct_count"),
 });
 
-export const sessionAnswers = sqliteTable("session_answers", {
+export const sessionAnswers = pgTable("session_answers", {
   sessionId: text("session_id").notNull(),
   questionId: text("question_id").notNull(),
   isCorrect: integer("is_correct").notNull(),
   answeredAt: text("answered_at"),
 });
 
-export const userSettings = sqliteTable("user_settings", {
+export const userSettings = pgTable("user_settings", {
   userEmail: text("user_email").notNull(),
   key: text("key").notNull(),
   value: text("value").notNull(),
   updatedAt: text("updated_at"),
 }, (t) => [primaryKey({ columns: [t.userEmail, t.key] })]);
 
-export const userSnapshots = sqliteTable("user_snapshots", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const userSnapshots = pgTable("user_snapshots", {
+  id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   examId: text("exam_id").notNull(),
   ts: integer("ts").notNull(),
@@ -93,19 +93,19 @@ export const userSnapshots = sqliteTable("user_snapshots", {
   createdAt: text("created_at"),
 });
 
-export const userInvalidatedQuestions = sqliteTable("user_invalidated_questions", {
+export const userInvalidatedQuestions = pgTable("user_invalidated_questions", {
   userEmail: text("user_email").notNull(),
   questionId: text("question_id").notNull(),
 }, (t) => [primaryKey({ columns: [t.userEmail, t.questionId] })]);
 
-export const studyGuides = sqliteTable("study_guides", {
+export const studyGuides = pgTable("study_guides", {
   examId: text("exam_id").primaryKey(),
   markdown: text("markdown").notNull(),
   generatedAt: text("generated_at"),
 });
 
-export const suggestions = sqliteTable("suggestions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const suggestions = pgTable("suggestions", {
+  id: serial("id").primaryKey(),
   questionId: text("question_id").notNull(),
   type: text("type").notNull(), // 'ai' | 'manual'
   suggestedAnswers: text("suggested_answers"),
@@ -116,7 +116,7 @@ export const suggestions = sqliteTable("suggestions", {
   createdAt: text("created_at"),
 });
 
-export const appSettings = sqliteTable("app_settings", {
+export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   updatedAt: text("updated_at"),
