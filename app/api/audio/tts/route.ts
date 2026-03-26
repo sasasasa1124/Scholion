@@ -1,7 +1,14 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getEnv } from "@/lib/env";
+import { getTtsCacheEntry, setTtsCacheEntry } from "@/lib/db";
+
+async function sha256hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 function buildWavHeader(pcmByteLength: number): Uint8Array {
   const header = new ArrayBuffer(44);
@@ -37,6 +44,9 @@ function buildWavHeader(pcmByteLength: number): Uint8Array {
   return new Uint8Array(header);
 }
 
+const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+const TTS_VOICE = "Aoede";
+
 export async function POST(req: NextRequest) {
   const apiKey = getEnv("GEMINI_API_KEY");
   if (!apiKey) {
@@ -55,21 +65,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Use default model unless overridden — avoid D1 roundtrip on every request
-  const ttsModel = "gemini-2.5-flash-preview-tts";
+  // Check server-side DB cache first
+  const textHash = await sha256hex(text);
+  const cachedBase64 = await getTtsCacheEntry(textHash).catch(() => null);
+  if (cachedBase64) {
+    const binaryStr = atob(cachedBase64);
+    const wavBytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) wavBytes[i] = binaryStr.charCodeAt(i);
+    return new NextResponse(wavBytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/wav",
+        "Content-Length": String(wavBytes.byteLength),
+        "Cache-Control": "private, max-age=86400",
+      },
+    });
+  }
 
   const ai = new GoogleGenAI({ apiKey });
 
   let base64Audio: string;
   try {
     const response = await ai.models.generateContent({
-      model: ttsModel,
+      model: TTS_MODEL,
       contents: text,
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: "Aoede" },
+            prebuiltVoiceConfig: { voiceName: TTS_VOICE },
           },
         },
       },
@@ -96,12 +120,16 @@ export async function POST(req: NextRequest) {
   wavBytes.set(wavHeader, 0);
   wavBytes.set(pcmBytes, wavHeader.byteLength);
 
+  // Store in DB cache (base64 of full WAV including header)
+  const wavBase64 = btoa(String.fromCharCode(...wavBytes));
+  setTtsCacheEntry(textHash, wavBase64, TTS_MODEL, TTS_VOICE).catch(() => {});
+
   return new NextResponse(wavBytes, {
     status: 200,
     headers: {
       "Content-Type": "audio/wav",
       "Content-Length": String(wavBytes.byteLength),
-      "Cache-Control": "private, max-age=300",
+      "Cache-Control": "private, max-age=86400",
     },
   });
 }

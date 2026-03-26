@@ -920,3 +920,25 @@ export async function deleteSuggestion(id: number): Promise<void> {
 
   await db.delete(suggestionsTable).where(eq(suggestionsTable.id, id));
 }
+
+// ── TTS cache ───────────────────────────────────────────────────────────────
+
+export async function getTtsCacheEntry(textHash: string): Promise<string | null> {
+  const db = getDrizzle();
+  if (!db) return null;
+
+  const [row] = await db.select({ wavData: schema.ttsCache.wavData })
+    .from(schema.ttsCache)
+    .where(eq(schema.ttsCache.textHash, textHash));
+
+  return row?.wavData ?? null;
+}
+
+export async function setTtsCacheEntry(textHash: string, wavData: string, model: string, voice: string): Promise<void> {
+  const db = getDrizzle();
+  if (!db) return;
+
+  await db.insert(schema.ttsCache)
+    .values({ textHash, wavData, model, voice, createdAt: new Date().toISOString() })
+    .onConflictDoNothing();
+}
