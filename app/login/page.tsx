@@ -15,6 +15,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [domainError, setDomainError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,11 +48,20 @@ function LoginForm() {
           <input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setEmail(val);
+              if (val.includes("@") && !val.endsWith("@salesforce.com")) {
+                setDomainError("salesforce.com のメールアドレスのみ使用できます");
+              } else {
+                setDomainError("");
+              }
+            }}
             required
-            className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400 bg-white"
-            placeholder="you@example.com"
+            className={`w-full h-10 px-3 rounded-xl border text-sm focus:outline-none bg-white transition-colors ${domainError ? "border-rose-300 focus:border-rose-400" : "border-gray-200 focus:border-gray-400"}`}
+            placeholder="you@salesforce.com"
           />
+          {domainError && <p className="text-xs text-rose-500 mt-1">{domainError}</p>}
         </div>
         <div>
           <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
@@ -77,7 +87,7 @@ function LoginForm() {
         {error && <p className="text-xs text-rose-500">{error}</p>}
         <button
           type="submit"
-          disabled={loading || !isLoaded}
+          disabled={loading || !isLoaded || !!domainError}
           className="w-full h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50"
         >
           {loading ? "処理中..." : "ログイン"}

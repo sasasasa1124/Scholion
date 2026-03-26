@@ -121,3 +121,11 @@ export const appSettings = pgTable("app_settings", {
   value: text("value").notNull(),
   updatedAt: text("updated_at"),
 });
+
+export const ttsCache = pgTable("tts_cache", {
+  textHash: text("text_hash").primaryKey(), // SHA-256 hex of cleaned text
+  wavData: text("wav_data").notNull(),      // base64-encoded WAV bytes
+  model: text("model").notNull(),
+  voice: text("voice").notNull(),
+  createdAt: text("created_at").notNull(),
+});
