@@ -114,7 +114,7 @@ export async function POST(
               // Nothing missing — just stamp filled_at and move on
               await db.prepare("UPDATE questions SET filled_at = datetime('now') WHERE id = ?").bind(q.id).run();
               done++;
-              send({ done, total });
+              send({ done, total, filled, skipped, failed });
               continue;
             }
 
@@ -180,7 +180,7 @@ export async function POST(
           } catch { failed++; }
 
           done++;
-          send({ done, total, failed });
+          send({ done, total, filled, skipped, failed });
         }
 
         send({ done: total, total, filled, skipped, failed });

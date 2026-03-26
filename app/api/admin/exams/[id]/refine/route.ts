@@ -112,7 +112,7 @@ export async function POST(
           } catch { failed++; }
 
           done++;
-          send({ done, total, failed });
+          send({ done, total, refined, failed });
         }
 
         send({ done: total, total, refined, failed });
