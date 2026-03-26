@@ -1,11 +1,9 @@
-export const runtime = "edge";
-
 /**
  * POST /api/admin/import
  *
  * Accepts an Excel (.xlsx/.xls) or CSV file, uploads it to the Gemini Files API,
  * runs an agentic codeExecution loop to inspect the structure and convert to a
- * standardised question list, then bulk-inserts into D1.
+ * standardised question list, then bulk-inserts into PostgreSQL.
  *
  * Streams progress as Server-Sent Events:
  *   data: { step: "upload" | "inspect" | "convert" | "saving" | "done" | "error", ...fields }
@@ -15,7 +13,6 @@ import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import type { Content, GenerateContentResponse } from "@google/genai";
 import { getDB, getSetting } from "@/lib/db";
-import { getRequestContext } from "@cloudflare/next-on-pages";
 import { requireAdmin } from "@/lib/auth";
 import { getUserEmail } from "@/lib/user";
 import { parseAiJson } from "@/lib/ai-json";
@@ -142,15 +139,13 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: "file and examId are required" }), { status: 400 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = getRequestContext() as any;
-  const apiKey = ctx.env?.GEMINI_API_KEY as string | undefined;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500 });
   }
 
-  const db = getDB();
-  if (!db) {
+  const pg = getDB();
+  if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
 
@@ -299,36 +294,35 @@ Include every question — do not truncate. Use the column mapping you just iden
           return controller.close();
         }
 
-        // ── 4. D1 bulk insert ─────────────────────────────────────────────
+        // ── 4. Bulk insert ────────────────────────────────────────────────
         send({ step: "saving", message: `Saving ${questions.length} questions...`, done: 0, total: questions.length });
 
         // Upsert exam record
-        await db
-          .prepare(
-            `INSERT INTO exams (id, name, lang, created_by) VALUES (?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET name = excluded.name, lang = excluded.lang`
-          )
-          .bind(examId, examName ?? examId, lang, userEmail)
-          .run();
+        await pg`
+          INSERT INTO exams (id, name, lang, created_by)
+          VALUES (${examId}, ${examName ?? examId}, ${lang}, ${userEmail})
+          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, lang = EXCLUDED.lang`;
 
         let saved = 0;
         for (const q of questions) {
           const qId = `${examId}__${q.num}`;
           const options = buildOptions(q.choices);
 
-          await db
-            .prepare(
-              `INSERT OR REPLACE INTO questions
-               (id, exam_id, num, question_text, options, answers, explanation, source,
-                explanation_sources, created_by, created_at, added_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, datetime('now'), datetime('now'))`
+          await pg`
+            INSERT INTO questions
+              (id, exam_id, num, question_text, options, answers, explanation, source,
+               explanation_sources, created_by, created_at, added_at)
+            VALUES (
+              ${qId}, ${examId}, ${q.num}, ${q.question},
+              ${JSON.stringify(options)}, ${JSON.stringify(q.answer)},
+              ${q.explanation}, ${q.source}, ${"[]"}, ${userEmail}, NOW(), NOW()
             )
-            .bind(
-              qId, examId, q.num, q.question,
-              JSON.stringify(options), JSON.stringify(q.answer),
-              q.explanation, q.source, userEmail
-            )
-            .run();
+            ON CONFLICT (id) DO UPDATE SET
+              question_text = EXCLUDED.question_text,
+              options       = EXCLUDED.options,
+              answers       = EXCLUDED.answers,
+              explanation   = EXCLUDED.explanation,
+              source        = EXCLUDED.source`;
 
           saved++;
           if (saved % 20 === 0 || saved === questions.length) {

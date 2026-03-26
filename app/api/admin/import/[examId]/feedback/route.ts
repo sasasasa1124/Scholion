@@ -1,10 +1,8 @@
-export const runtime = "edge";
-
 /**
  * POST /api/admin/import/[examId]/feedback
  *
  * Accept a free-text feedback message about an already-imported exam.
- * Fetches current questions from D1, passes them to Gemini with codeExecution,
+ * Fetches current questions from PostgreSQL, passes them to Gemini with codeExecution,
  * and applies the resulting fix list back to the DB.
  *
  * Streams progress as Server-Sent Events:
@@ -15,7 +13,6 @@ import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import type { Content, GenerateContentResponse } from "@google/genai";
 import { getDB, getSetting } from "@/lib/db";
-import { getRequestContext } from "@cloudflare/next-on-pages";
 import { requireAdmin } from "@/lib/auth";
 import { parseAiJsonAs } from "@/lib/ai-json";
 import { FeedbackFixesSchema } from "@/lib/ai-schemas";
@@ -98,40 +95,35 @@ export async function POST(
     return new Response(JSON.stringify({ error: "message is required" }), { status: 400 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = getRequestContext() as any;
-  const apiKey = ctx.env?.GEMINI_API_KEY as string | undefined;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500 });
   }
 
-  const db = getDB();
-  if (!db) {
+  const pg = getDB();
+  if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
 
   // Fetch current questions from DB
-  const { results: rows } = await db
-    .prepare(
-      "SELECT id, num, question_text, options, answers, explanation, source FROM questions WHERE exam_id = ? ORDER BY num ASC"
-    )
-    .bind(examId)
-    .all<{
-      id: string;
-      num: number;
-      question_text: string;
-      options: string;
-      answers: string;
-      explanation: string;
-      source: string;
-    }>();
+  const rows = await pg<{
+    id: string;
+    num: number;
+    question_text: string;
+    options: string;
+    answers: string;
+    explanation: string;
+    source: string;
+  }[]>`SELECT id, num, question_text, options, answers, explanation, source FROM questions WHERE exam_id = ${examId} ORDER BY num ASC`;
 
   if (!rows || rows.length === 0) {
     return new Response(JSON.stringify({ error: `No questions found for exam: ${examId}` }), { status: 404 });
   }
 
+  type QuestionRow = { id: string; num: number; question_text: string; options: string; answers: string; explanation: string; source: string };
+
   // Sample for context (first 30 + total count to avoid huge prompts)
-  const sample = rows.slice(0, 30).map((r) => ({
+  const sample = rows.slice(0, 30).map((r: QuestionRow) => ({
     id: r.id,
     num: r.num,
     question: r.question_text,
@@ -148,7 +140,7 @@ ${rows.length > 30 ? `(Showing first 30 as sample — apply fixes to all ${rows.
 Current questions (JSON):
 ${JSON.stringify(sample, null, 2)}
 
-All question IDs: ${rows.map((r) => r.id).join(", ")}`;
+All question IDs: ${rows.map((r: QuestionRow) => r.id).join(", ")}`;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -232,10 +224,19 @@ Use codeExecution to iterate through all questions and generate the fixes.`,
             // Validate the question ID belongs to this exam
             if (!fix.id.startsWith(`${examId}__`)) continue;
 
-            await db
-              .prepare(`UPDATE questions SET ${fix.field} = ?, updated_at = datetime('now') WHERE id = ?`)
-              .bind(fix.value, fix.id)
-              .run();
+            // postgres.js doesn't allow dynamic column names in template literals,
+            // so we branch per field name
+            if (fix.field === "question_text") {
+              await pg`UPDATE questions SET question_text = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+            } else if (fix.field === "options") {
+              await pg`UPDATE questions SET options = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+            } else if (fix.field === "answers") {
+              await pg`UPDATE questions SET answers = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+            } else if (fix.field === "explanation") {
+              await pg`UPDATE questions SET explanation = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+            } else if (fix.field === "source") {
+              await pg`UPDATE questions SET source = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+            }
 
             fixed++;
             if (fixed % 10 === 0 || fixed === fixes.length) {
