@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Quiz — a Salesforce/MuleSoft certification exam practice app. Built with Next.js 15 (App Router), React 19, TypeScript, and Tailwind CSS v4. All application code lives under `quiz/`.
+Quiz — a certification exam practice app. Built with Next.js 15 (App Router), React 19, TypeScript, and Tailwind CSS v4. All application code lives under `quiz/`.
 
 CSV question files are stored in the repository root (parent of `quiz/`), read server-side via `quiz/lib/csv.ts`.
 
@@ -21,28 +21,46 @@ npm run build
 
 # Start production server
 npm start
+
+# Database (local D1)
+npm run db:migrate:local    # apply migrations to local D1
+npm run db:seed:local       # import CSV questions into local D1
+
+# Database (production D1)
+npm run db:migrate          # apply migrations to production D1
+
+# Cloudflare build + deploy
+npm run build:cf            # build for Cloudflare Pages (vercel build + next-on-pages)
 ```
 
 ## Architecture
 
 ### Routes
 
-- `/` — mode select (Home)
+- `/` — exam list / mode select (Home)
 - `/select/[mode]` — language select
 - `/select/[mode]/[lang]` — exam list
-- `/quiz/[exam]?mode=&filter=` — quiz screen
+- `/quiz/[exam]?mode=&filter=` — quiz screen (quiz / review / mock / answers / study-guide)
+- `/exam/[id]` — exam detail / answer history
+- `/profile` — progress graphs, session history
+- `/settings` — user settings (AI prompts, audio, display)
 
 ### Key Files
 
 - **`lib/csv.ts`**: Server-side CSV loader. Reads question files from the repository root (one directory above `quiz/`).
 - **`lib/types.ts`**: Shared TypeScript types.
-- **`app/api/`**: API routes.
+- **`lib/db.ts`**: DB access via Drizzle ORM + Cloudflare D1.
+- **`lib/env.ts`**: Environment variable accessor — wraps `process.env` (local) and `getRequestContext().env` (Cloudflare Workers).
+- **`lib/schema.ts`**: Drizzle schema definitions.
+- **`app/api/`**: API routes (32 routes, all `runtime = "edge"`).
 - **`components/`**: UI components (QuizClient, QuizQuestion, ExamCard, etc.).
+- **`migrations/`**: D1 migration files (17 total).
 
 ### Data
 
-- **CSV files**: Located at `/Users/kota.sasamoto/sandbox/claude-code/*.csv`. Each file corresponds to an exam.
-- **Stats**: Stored in `localStorage` with key `quiz-stats-{examId}`. Value shape: `{ [questionId]: { attempts: number, correct: number } }`.
+- **CSV files**: Located at the repository root (parent of `quiz/`). Each file corresponds to one exam. Read server-side only; removed from Cloudflare build output.
+- **Database**: Cloudflare D1 (SQLite). Stores questions, scores, sessions, snapshots, study guides, suggestions.
+- **Spaced Repetition**: SM-2 algorithm. Per-user scores with `interval_days`, `ease_factor`, `next_review_at` stored in the `scores` table.
 
 ### UI Stack
 
@@ -69,9 +87,17 @@ This repository is worked on by **multiple AI agent teams in parallel** (e.g., C
 ## Deployment Rules
 
 - **Branch strategy**: Never work directly on `main`. Always create a feature branch (`feat/xxx`, `fix/xxx`).
+- **Deploy branches**: Deployment is triggered by pushing `main` to a deploy branch — never commit directly to these branches:
+  - `deploy/cloudflare` → GitHub Actions deploys to Cloudflare Pages
+  - `deploy/gcp` → GitHub Actions deploys to GCP Cloud Run
+  ```bash
+  git push origin main:deploy/cloudflare   # deploy to Cloudflare
+  git push origin main:deploy/gcp          # deploy to GCP
+  ```
 - **Deployment verification**: After pushing, confirm the GitHub Actions workflow completes successfully. Check deployment status before declaring the work done.
 - **Cloudflare commit messages**: Cloudflare Pages API rejects non-ASCII characters in commit messages (error code 8000111). Keep commit messages in English/ASCII only.
-- **D1 migrations**: Production migrations are applied via `scripts/migrate-d1.sh` or wrangler. Verify the migration ran on production after deployment.
+- **D1 migrations**: Production migrations are applied via `npm run db:migrate`. Verify the migration ran on production after deployment.
+- **GCP details**: See [GCP-Project.md](./GCP-Project.md) for full GCP resource list, CLI setup steps, and code changes required for migration.
 
 ## Debugging and Bug Fix Protocol
 
