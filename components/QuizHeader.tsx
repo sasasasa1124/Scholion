@@ -230,7 +230,6 @@ export default function QuizHeader({
                 <>
                   <button
                     onClick={() => {
-                      onFilterChange("custom");
                       setFilterPanelOpen((o) => !o);
                     }}
                     className={`flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1 rounded-md transition-colors ${filter === "custom" ? "bg-white text-scholion-500 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
@@ -246,6 +245,7 @@ export default function QuizHeader({
                     <FilterPanel
                       filterConfig={filterConfig}
                       onApply={(cfg) => {
+                        onFilterChange("custom");
                         onFilterConfigChange(cfg);
                         setFilterPanelOpen(false);
                       }}
