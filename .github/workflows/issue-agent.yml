@@ -23,22 +23,22 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_tools: "Edit,MultiEdit,Glob,Grep,LS,Read,Write,mcp__github_comment__update_claude_comment,Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rm:*),Bash(git checkout:*),Bash(gh issue view:*),Bash(gh pr create:*),Bash(npm run:*),Bash(npm install:*),Bash(npx:*)"
           direct_prompt: |
             Please implement the following GitHub issue:
 
             Issue number: ${{ github.event.issue.number || github.event.client_payload.issue_number }}
 
-            First, fetch the issue details with:
-              gh issue view ${{ github.event.issue.number || github.event.client_payload.issue_number }} --repo ${{ github.repository }}
+            The issue context is already provided above — read it carefully.
+            You are already on the correct working branch. Do NOT create a new branch.
 
-            Then follow these steps:
+            Follow these steps:
             1. Analyze the issue and form a clear implementation plan
-            2. Create a new branch named `agent/issue-${{ github.event.issue.number || github.event.client_payload.issue_number }}`
-            3. Implement the required changes (application code lives under quiz/)
-            4. Commit your changes with a descriptive English/ASCII commit message
-            5. Open a pull request with a body that includes exactly "Closes #${{ github.event.issue.number || github.event.client_payload.issue_number }}" so GitHub auto-closes the issue on merge
+            2. Implement the required changes (application code lives under quiz/)
+            3. Run `cd quiz && npm install && npm run build` to verify the build passes
+            4. Commit with a descriptive English/ASCII-only commit message
+            5. Push the branch and open a pull request whose body includes exactly "Closes #${{ github.event.issue.number || github.event.client_payload.issue_number }}"
 
             Project guidelines:
             - Follow CLAUDE.md in the repo root and quiz/CLAUDE.md
             - Keep commit messages in English/ASCII only (Cloudflare Pages requirement)
-            - Run `npm run build` in quiz/ to verify the build before opening the PR
