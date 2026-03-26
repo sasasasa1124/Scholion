@@ -158,7 +158,7 @@ export async function POST(
           } catch { failed++; }
 
           done++;
-          send({ done, total, failed });
+          send({ done, total, fixed, failed });
         }
 
         send({ done: total, total, fixed, skipped: skippedCount, failed });
