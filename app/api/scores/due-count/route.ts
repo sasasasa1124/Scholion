@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDueCount } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
-export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
   const examId = req.nextUrl.searchParams.get("examId");

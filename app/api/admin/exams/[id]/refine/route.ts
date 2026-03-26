@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
@@ -35,8 +34,8 @@ export async function POST(
     return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500 });
   }
 
-  const db = getDB();
-  if (!db) {
+  const pg = getDB();
+  if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
 
@@ -101,12 +100,7 @@ export async function POST(
             });
 
             if (questionChanged || choicesChanged) {
-              await db
-                .prepare(
-                  "UPDATE questions SET question_text = ?, options = ?, version = version + 1, updated_at = datetime('now') WHERE id = ?"
-                )
-                .bind(result.question, JSON.stringify(result.choices), q.dbId)
-                .run();
+              await pg`UPDATE questions SET question_text = ${result.question}, options = ${JSON.stringify(result.choices)}, version = version + 1, updated_at = NOW() WHERE id = ${q.dbId}`;
               refined++;
             }
           } catch { failed++; }

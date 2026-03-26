@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
@@ -50,8 +49,8 @@ export async function POST(
     return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500 });
   }
 
-  const db = getDB();
-  if (!db) {
+  const pg = getDB();
+  if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
 
@@ -61,10 +60,7 @@ export async function POST(
   }
 
   // Get source exam info
-  const examRow = await db
-    .prepare("SELECT name, lang FROM exams WHERE id = ?")
-    .bind(examId)
-    .first<{ name: string; lang: string }>();
+  const [examRow] = await pg<{ name: string; lang: string }[]>`SELECT name, lang FROM exams WHERE id = ${examId}`;
   if (!examRow) {
     return new Response(JSON.stringify({ error: "Exam not found" }), { status: 404 });
   }
@@ -95,10 +91,7 @@ export async function POST(
         const translatedName = nameResp.text?.trim() ?? examRow.name;
 
         // Create new exam record
-        await db
-          .prepare("INSERT OR REPLACE INTO exams (id, name, lang) VALUES (?, ?, ?)")
-          .bind(newExamId, translatedName, targetLanguage)
-          .run();
+        await pg`INSERT INTO exams (id, name, lang) VALUES (${newExamId}, ${translatedName}, ${targetLanguage}) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, lang = EXCLUDED.lang`;
 
         send({ done: 0, total });
 
@@ -167,26 +160,16 @@ ${batchJson}`;
         for (let idx = 0; idx < allTranslated.length; idx++) {
           const tq = allTranslated[idx];
           const qId = `${newExamId}__${idx + 1}`;
-          await db
-            .prepare(
-              `INSERT OR REPLACE INTO questions
-               (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, category, created_at, added_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-            )
-            .bind(
-              qId,
-              newExamId,
-              idx + 1,
-              tq.question,
-              JSON.stringify(tq.choices),
-              // Preserve original answers from source questions
-              JSON.stringify(questions[idx]?.answers ?? []),
-              tq.explanation,
-              questions[idx]?.source ?? "",
-              JSON.stringify(questions[idx]?.explanationSources ?? []),
-              tq.category ?? null,
-            )
-            .run();
+          await pg`
+            INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, category, created_at, added_at)
+            VALUES (${qId}, ${newExamId}, ${idx + 1}, ${tq.question}, ${JSON.stringify(tq.choices)},
+                    ${JSON.stringify(questions[idx]?.answers ?? [])}, ${tq.explanation},
+                    ${questions[idx]?.source ?? ""}, ${JSON.stringify(questions[idx]?.explanationSources ?? [])},
+                    ${tq.category ?? null}, NOW(), NOW())
+            ON CONFLICT (id) DO UPDATE SET
+              question_text = EXCLUDED.question_text, options = EXCLUDED.options,
+              answers = EXCLUDED.answers, explanation = EXCLUDED.explanation,
+              category = EXCLUDED.category, updated_at = NOW()`;
         }
 
         send({ done: total, total, newExamId });

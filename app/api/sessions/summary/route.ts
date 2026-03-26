@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getDailyProgress } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
-export const runtime = "edge";
 
 function computeStreak(activeDays: string[]): number {
   if (activeDays.length === 0) return 0;

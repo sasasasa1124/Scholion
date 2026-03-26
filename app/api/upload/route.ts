@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserEmail } from "@/lib/user";
+import { getDB } from "@/lib/db";
 
-export const runtime = "edge";
 
 
 // RFC 4180-compliant CSV parser (edge-compatible, no Node.js deps).
@@ -114,60 +114,33 @@ export async function POST(req: NextRequest) {
   // appendTo: if set, append questions to this existing exam instead of creating/replacing
   const appendTo = (formData.get("appendTo") as string | null)?.trim() || null;
 
-  // Get D1 binding
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let db: any = null;
-  try {
-    const { getRequestContext } = await import("@cloudflare/next-on-pages");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    db = (getRequestContext() as any).env.DB;
-  } catch {
-    // local dev: no D1
-  }
+  const pg = getDB();
 
   if (appendTo) {
     // ── Append mode ────────────────────────────────────────────────────────
-    if (!db) return NextResponse.json({ error: "DB not available" }, { status: 500 });
+    if (!pg) return NextResponse.json({ error: "DB not available" }, { status: 500 });
 
-    const examRow = await db
-      .prepare("SELECT id, name, lang FROM exams WHERE id = ?")
-      .bind(appendTo)
-      .first() as { id: string; name: string; lang: string } | null;
+    const [examRow] = await pg<{ id: string; name: string; lang: string }[]>`SELECT id, name, lang FROM exams WHERE id = ${appendTo}`;
     if (!examRow) return NextResponse.json({ error: `Exam not found: ${appendTo}` }, { status: 404 });
 
-    const maxRow = await db
-      .prepare("SELECT COALESCE(MAX(num), 0) AS max_num FROM questions WHERE exam_id = ?")
-      .bind(appendTo)
-      .first() as { max_num: number } | null;
+    const [maxRow] = await pg<{ max_num: number }[]>`SELECT COALESCE(MAX(num), 0)::int AS max_num FROM questions WHERE exam_id = ${appendTo}`;
     let nextNum = (maxRow?.max_num ?? 0) + 1;
 
     for (const row of records) {
       const num = nextNum++;
       const id = `${appendTo}__${num}`;
-      const questionText = esc(row["question"] ?? "");
       const choices = parseChoices(row["choices"] ?? "");
       const answers = parseAnswers(row["answer"] ?? row["answers"] ?? "");
-      const explanation = esc(row["explanation"] ?? "");
-      const source = esc(row["source"] ?? "");
-      const rawExpSources = row["explanation_sources"] ?? "";
-      const explanationSources = rawExpSources
-        ? rawExpSources.split(/\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean)
+      const explanationSources = (row["explanation_sources"] ?? "")
+        ? (row["explanation_sources"] ?? "").split(/\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean)
         : [];
       const isDuplicate = !!(row["duplicate"] ?? "").trim() ? 1 : 0;
-      const optionsJson = esc(JSON.stringify(choices));
-      const answersJson = esc(JSON.stringify(answers));
-      const expSourcesJson = esc(JSON.stringify(explanationSources));
 
-      await db.prepare(
-        `INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, is_duplicate, created_at, added_at) ` +
-        `VALUES ('${id}', '${esc(appendTo)}', ${num}, '${questionText}', '${optionsJson}', '${answersJson}', '${explanation}', '${source}', '${expSourcesJson}', ${isDuplicate}, datetime('now'), datetime('now'))`
-      ).run();
+      await pg`INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, is_duplicate, created_at, added_at)
+        VALUES (${id}, ${appendTo}, ${num}, ${row["question"] ?? ""}, ${JSON.stringify(choices)}, ${JSON.stringify(answers)}, ${row["explanation"] ?? ""}, ${row["source"] ?? ""}, ${JSON.stringify(explanationSources)}, ${isDuplicate}, NOW(), NOW())`;
     }
 
-    const countRow = await db
-      .prepare("SELECT COUNT(*) AS cnt FROM questions WHERE exam_id = ?")
-      .bind(appendTo)
-      .first() as { cnt: number } | null;
+    const [countRow] = await pg<{ cnt: number }[]>`SELECT COUNT(*)::int AS cnt FROM questions WHERE exam_id = ${appendTo}`;
 
     return NextResponse.json({
       exam: {
@@ -190,34 +163,24 @@ export async function POST(req: NextRequest) {
   const displayName = examId.replace(/_en$/, "").replace(/_/g, " ");
   const uploaderEmail = await getUserEmail();
 
-  if (db) {
-    await db.prepare(
-      `INSERT INTO exams (id, name, lang, created_by) VALUES ('${esc(examId)}', '${esc(displayName)}', '${language}', '${esc(uploaderEmail)}')` +
-      ` ON CONFLICT(id) DO UPDATE SET name='${esc(displayName)}', lang='${language}'`
-    ).run();
+  if (pg) {
+    await pg`INSERT INTO exams (id, name, lang, created_by) VALUES (${examId}, ${displayName}, ${language}, ${uploaderEmail})
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, lang = EXCLUDED.lang`;
 
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
       const num = parseInt(row["#"] ?? String(i + 1), 10);
       const id = `${examId}__${num}`;
-      const questionText = esc(row["question"] ?? "");
       const choices = parseChoices(row["choices"] ?? "");
       const answers = parseAnswers(row["answer"] ?? row["answers"] ?? "");
-      const explanation = esc(row["explanation"] ?? "");
-      const source = esc(row["source"] ?? "");
-      const rawExpSources = row["explanation_sources"] ?? "";
-      const explanationSources = rawExpSources
-        ? rawExpSources.split(/\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean)
+      const explanationSources = (row["explanation_sources"] ?? "")
+        ? (row["explanation_sources"] ?? "").split(/\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean)
         : [];
       const isDuplicate = !!(row["duplicate"] ?? "").trim() ? 1 : 0;
-      const optionsJson = esc(JSON.stringify(choices));
-      const answersJson = esc(JSON.stringify(answers));
-      const expSourcesJson = esc(JSON.stringify(explanationSources));
 
-      await db.prepare(
-        `INSERT OR REPLACE INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, is_duplicate, created_at, added_at) ` +
-        `VALUES ('${id}', '${esc(examId)}', ${num}, '${questionText}', '${optionsJson}', '${answersJson}', '${explanation}', '${source}', '${expSourcesJson}', ${isDuplicate}, datetime('now'), datetime('now'))`
-      ).run();
+      await pg`INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source, explanation_sources, is_duplicate, created_at, added_at)
+        VALUES (${id}, ${examId}, ${num}, ${row["question"] ?? ""}, ${JSON.stringify(choices)}, ${JSON.stringify(answers)}, ${row["explanation"] ?? ""}, ${row["source"] ?? ""}, ${JSON.stringify(explanationSources)}, ${isDuplicate}, NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET question_text = EXCLUDED.question_text, options = EXCLUDED.options, answers = EXCLUDED.answers, explanation = EXCLUDED.explanation, updated_at = NOW()`;
     }
   }
 

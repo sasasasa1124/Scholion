@@ -1,0 +1,56 @@
+name: Deploy to GCP Cloud Run (Scholion)
+
+on:
+  push:
+    branches: [deploy/gcp]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show diff from previous deployment
+        run: git log origin/deploy/gcp..HEAD --oneline || true
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE=asia-northeast1-docker.pkg.dev/ehc-kota-sasamoto-c34610/scholion/scholion:${{ github.sha }}
+          docker build \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }} \
+            -t $IMAGE .
+          docker push $IMAGE
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy scholion \
+            --image asia-northeast1-docker.pkg.dev/ehc-kota-sasamoto-c34610/scholion/scholion:${{ github.sha }} \
+            --region asia-northeast1 \
+            --service-account scholion-sa@ehc-kota-sasamoto-c34610.iam.gserviceaccount.com \
+            --platform managed \
+            --allow-unauthenticated \
+            --vpc-connector scholion-connector \
+            --vpc-egress private-ranges-only \
+            --set-secrets=CLERK_SECRET_KEY=CLERK_SECRET_KEY:latest \
+            --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --set-secrets=ADMIN_EMAILS=ADMIN_EMAILS:latest \
+            --set-secrets=GITHUB_TOKEN=GITHUB_TOKEN:latest \
+            --set-secrets=GITHUB_OWNER=GITHUB_OWNER:latest \
+            --set-secrets=GITHUB_REPO=GITHUB_REPO:latest

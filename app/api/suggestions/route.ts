@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSuggestions, getSuggestionCount, createSuggestion } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";
 
-export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
   const questionId = req.nextUrl.searchParams.get("questionId");
