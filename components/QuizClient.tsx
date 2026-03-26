@@ -590,7 +590,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
             <p className="text-sm text-gray-400 mt-1">You&apos;ve mastered all the wrong answers.</p>
           )}
         </div>
-        {(filter === "wrong" || excludeDuplicates) && (
+        {(filter === "wrong" || filter === "custom" || excludeDuplicates) && (
           <button onClick={() => { setFilter("all"); setExcludeDuplicates(false); }} className="h-10 px-5 rounded-xl bg-scholion-500 text-white text-sm font-semibold hover:bg-scholion-600 transition-colors">
             {t("showAll")}
           </button>
@@ -838,7 +838,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={handleAiFactCheck}
-                              className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors"
                               title={t("factCheck")}
                             >
                               <ShieldCheck size={11} />
@@ -1002,6 +1002,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
           onAiExplain={handleAiExplain}
           questionDbId={q.dbId}
           choices={q.choices}
+          anyPopupOpen={aiPopupOpen || refinePopupOpen || factCheckPopupOpen}
         />
       )}
 

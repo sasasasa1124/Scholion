@@ -15,15 +15,17 @@ interface Props {
   onAiExplain: () => void;
   questionDbId: string;
   choices: Choice[];
+  anyPopupOpen?: boolean;
 }
 
-export default function AnswerRevealModal({ question, isCorrect, isLast, onNext, onAiExplain, questionDbId, choices }: Props) {
+export default function AnswerRevealModal({ question, isCorrect, isLast, onNext, onAiExplain, questionDbId, choices, anyPopupOpen }: Props) {
   const { t } = useSettings();
   // Keyboard: Escape / N / Enter → next
   // 150ms guard prevents the same keydown that triggered Submit from instantly dismissing the modal
   useEffect(() => {
     const ready = Date.now();
     const handler = (e: KeyboardEvent) => {
+      if (anyPopupOpen) return; // AI popup handles its own keys
       if (Date.now() - ready < 150) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (!e.isComposing && (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "Enter" || e.key === "ArrowRight")) {
@@ -33,7 +35,7 @@ export default function AnswerRevealModal({ question, isCorrect, isLast, onNext,
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onNext]);
+  }, [onNext, anyPopupOpen]);
 
   const correctChoices = question.choices.filter((c) => question.answers.includes(c.label));
 
