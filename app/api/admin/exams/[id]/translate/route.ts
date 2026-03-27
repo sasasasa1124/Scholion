@@ -4,6 +4,8 @@ import { GoogleGenAI } from "@google/genai";
 import { getDB, getQuestions, getSetting } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import type { Choice } from "@/lib/types";
+import { TranslatedQuestionsSchema } from "@/lib/ai-schemas";
+import { parseAiJsonAs } from "@/lib/ai-json";
 
 const LANG_NAMES: Record<string, string> = {
   ja: "Japanese",
@@ -19,13 +21,13 @@ const SALESFORCE_NOTE = `Important Salesforce terminology rules:
 - Do NOT translate URLs, code snippets, or field API names.
 - Preserve HTML tags if any exist in the text.`;
 
-interface TranslatedQuestion {
+type TranslatedQuestion = {
   num: number;
   question: string;
   choices: Choice[];
   explanation: string;
-  category: string | null;
-}
+  category?: string | null;
+};
 
 export async function POST(
   req: NextRequest,
@@ -71,6 +73,13 @@ export async function POST(
   const ai = new GoogleGenAI({ apiKey });
   const model = (await getSetting("gemini_model")) ?? "gemini-3-flash-preview";
 
+  // Fetch existing categories from the source exam to use as constraints
+  const categoryRows = await pg<{ category: string }[]>`
+    SELECT DISTINCT category FROM questions
+    WHERE exam_id = ${examId} AND category IS NOT NULL AND category != ''
+    ORDER BY category`;
+  const sourceCategories = categoryRows.map((r) => r.category);
+
   const BATCH_SIZE = 15;
   const total = questions.length;
 
@@ -109,13 +118,22 @@ export async function POST(
             category: q.category,
           })));
 
+          const categoryConstraint = sourceCategories.length > 0
+            ? `\n- "category": assign exactly one category from this list (translate the name if needed): ${sourceCategories.map((c) => `"${c}"`).join(", ")}`
+            : `\n- "category": short topic/domain label matching official exam topic areas`;
+
           const prompt = `You are a Salesforce/MuleSoft certification exam translator.
 
 Translate the following exam questions from ${sourceLangName} to ${targetLangName}.
 
 ${SALESFORCE_NOTE}
 
-Return a JSON array (no markdown, no code blocks) with the same structure, translating only: "question", each choice "text", "explanation", and "category". Keep "num", choice "id" values unchanged.
+Return a JSON array (no markdown, no code blocks) with the same structure, translating only:
+- "question": the question text
+- each choice "text": the choice body text
+- "explanation": the explanation text${categoryConstraint}
+
+IMPORTANT: Keep "num" and choice "label" values unchanged. Do NOT rename the "label" field to anything else.
 
 Input JSON:
 ${batchJson}`;
@@ -134,7 +152,13 @@ ${batchJson}`;
               });
               const text = (resp.text ?? "").trim()
                 .replace(/^```json\s*/i, "").replace(/\s*```$/, "");
-              translated = JSON.parse(text) as TranslatedQuestion[];
+              const { data, error } = parseAiJsonAs(text, TranslatedQuestionsSchema);
+              if (data) {
+                translated = data;
+              } else {
+                if (error) retries--;
+                if (retries < 0) throw new Error(error ?? "parse failed");
+              }
             } catch {
               retries--;
               if (retries < 0) {

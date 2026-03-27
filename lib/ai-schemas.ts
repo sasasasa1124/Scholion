@@ -54,6 +54,31 @@ export const AdminFillResultsSchema = z.array(AdminFillResultSchema);
 
 export type AdminFillResult = z.infer<typeof AdminFillResultSchema>;
 
+// ── Translate ─────────────────────────────────────────────────────────────────
+// Used by: app/api/admin/exams/[id]/translate
+
+export const TranslatedChoiceSchema = z.object({
+  // Accept both "label" (correct) and "id" (LLM sometimes returns wrong field name)
+  label: z.string().optional(),
+  id: z.string().optional(),
+  text: z.string(),
+}).transform((c) => ({
+  label: c.label ?? c.id ?? "",
+  text: c.text,
+}));
+
+export const TranslatedQuestionSchema = z.object({
+  num: z.number(),
+  question: z.string(),
+  choices: z.array(TranslatedChoiceSchema),
+  explanation: z.string(),
+  category: z.string().nullable().optional(),
+});
+
+export const TranslatedQuestionsSchema = z.array(TranslatedQuestionSchema);
+
+export type TranslatedQuestion = z.infer<typeof TranslatedQuestionSchema>;
+
 // ── Import ────────────────────────────────────────────────────────────────────
 // Used by: app/api/admin/import
 
