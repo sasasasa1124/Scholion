@@ -1,5 +1,3 @@
-export const runtime = 'edge';
-
 import { NextRequest, NextResponse } from "next/server";
 import { toggleUserInvalidated } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";

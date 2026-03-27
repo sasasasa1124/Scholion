@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { NextResponse } from "next/server";
 import { getDailyProgress } from "@/lib/db";
 import { getUserEmail } from "@/lib/user";

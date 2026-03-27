@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { NextRequest, NextResponse } from "next/server";
 import { getUserEmail } from "@/lib/user";
 import { getDB } from "@/lib/db";

@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { getExamList } from "@/lib/db";
 import ProfileClient from "@/components/ProfileClient";
 
