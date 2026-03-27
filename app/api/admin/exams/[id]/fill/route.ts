@@ -65,6 +65,36 @@ export async function POST(
   const ai = new GoogleGenAI({ apiKey });
   const model = (await getSetting("gemini_model")) ?? "gemini-3-flash-preview";
 
+  // Fetch or generate canonical category list for this exam
+  const [examRow] = await pg<{ name: string }[]>`SELECT name FROM exams WHERE id = ${examId}`;
+  const examName = examRow?.name ?? examId;
+  const existingCategoryRows = await pg<{ category: string }[]>`
+    SELECT DISTINCT category FROM questions
+    WHERE exam_id = ${examId} AND category IS NOT NULL AND category != ''`;
+  let canonicalCategories: string[] = existingCategoryRows.map((r) => r.category);
+
+  if (canonicalCategories.length < 3 && candidates.some((q) => !q.category)) {
+    // Generate canonical category list via LLM + Google Search
+    try {
+      const categoryListPrompt = `You are an expert on Salesforce/MuleSoft certification exams.
+Use Google Search to find the official exam guide for "${examName}".
+Return a JSON array of the official topic areas / domains for this exam (6-12 items, concise English labels).
+Return ONLY a JSON array of strings, no markdown, no extra text.
+Example: ["Core Mule Concepts", "DataWeave", "Anypoint Platform"]`;
+      const categoryResp = await ai.models.generateContent({
+        model,
+        contents: categoryListPrompt,
+        config: { tools: [{ googleSearch: {} }] },
+      });
+      const rawCats = (categoryResp.text ?? "").trim()
+        .replace(/^```json\s*/i, "").replace(/\s*```$/, "");
+      const parsed = JSON.parse(rawCats) as string[];
+      if (Array.isArray(parsed) && parsed.length >= 3) {
+        canonicalCategories = parsed;
+      }
+    } catch { /* fall through — no category constraint */ }
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder();
@@ -114,7 +144,10 @@ export async function POST(
             }]);
 
             const template = userPrompt || DEFAULT_FILL_PROMPT;
-            const prompt = template.replace("{questions}", singleJson);
+            const categoryConstraint = canonicalCategories.length >= 3 && missing.includes("category")
+              ? `\n\nIMPORTANT: For "category", assign exactly one from this list: ${canonicalCategories.map((c) => `"${c}"`).join(", ")}`
+              : "";
+            const prompt = template.replace("{questions}", singleJson) + categoryConstraint;
 
             let results: { id: string; answers?: string[]; explanation?: string; category?: string }[] | null = null;
             let retries = 2;

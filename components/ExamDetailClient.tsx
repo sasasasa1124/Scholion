@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Brain, BookOpen, BookOpenCheck,
   ChevronRight, AlertCircle, TrendingUp, Tag, Timer, History,
-  Pencil, Check, X, Lightbulb, Languages, Sparkles, Loader2, Wand2, ShieldCheck,
+  Pencil, Check, X, CheckCircle2, Lightbulb, Languages, Sparkles, Loader2, Wand2, ShieldCheck,
 } from "lucide-react";
 import type { CategoryStat, ExamMeta, Question } from "@/lib/types";
 import { useSetHeader } from "@/lib/header-context";
@@ -409,6 +409,21 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col pt-14">
+      {/* Translation complete toast */}
+      {newExamId && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-max max-w-sm">
+          <div className="flex items-center gap-3 bg-emerald-600 text-white text-sm font-medium px-4 py-3 rounded-xl shadow-lg">
+            <CheckCircle2 size={16} />
+            <span>翻訳完了</span>
+            <Link
+              href={`/exam/${encodeURIComponent(newExamId)}`}
+              className="underline underline-offset-2 hover:text-emerald-100 transition-colors"
+            >
+              新しい試験を開く →
+            </Link>
+          </div>
+        </div>
+      )}
       {editingMeta && (
         <div className="bg-white border-b border-gray-200 px-4 sm:px-8 py-3">
           <div className="max-w-2xl mx-auto space-y-2">

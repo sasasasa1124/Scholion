@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { ChevronDown, ChevronUp, X, Search } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import type { Question } from "@/lib/types";
-import { RichText } from "./RichText";
+
+const QuestionEditModal = dynamic(() => import("./QuestionEditModal"), { ssr: false });
 
 type QuestionWithInvalidated = Question & { invalidated: boolean };
 
@@ -11,8 +13,6 @@ interface Props {
   examId: string;
   userEmail: string;
 }
-
-interface ModalQuestion extends QuestionWithInvalidated {}
 
 export default function ExamQuestionTable({ examId, userEmail }: Props) {
   const [open, setOpen] = useState(false);
@@ -22,7 +22,7 @@ export default function ExamQuestionTable({ examId, userEmail }: Props) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("__all__");
   const [showInvalidatedOnly, setShowInvalidatedOnly] = useState(false);
-  const [modal, setModal] = useState<ModalQuestion | null>(null);
+  const [editingQuestion, setEditingQuestion] = useState<QuestionWithInvalidated | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const loadQuestions = useCallback(async () => {
@@ -52,11 +52,22 @@ export default function ExamQuestionTable({ examId, userEmail }: Props) {
       const res = await fetch(`/api/user/questions/${encodeURIComponent(q.dbId)}/invalidate`, { method: "POST" });
       const { invalidated } = await res.json() as { invalidated: boolean };
       setQuestions((prev) => prev.map((item) => item.dbId === q.dbId ? { ...item, invalidated } : item));
-      if (modal?.dbId === q.dbId) setModal((m) => m ? { ...m, invalidated } : m);
     } finally {
       setTogglingId(null);
     }
-  }, [userEmail, togglingId, modal]);
+  }, [userEmail, togglingId]);
+
+  const handleQuestionSave = useCallback((updated: Question) => {
+    setQuestions((prev) => prev.map((item) =>
+      item.dbId === updated.dbId ? { ...item, ...updated } : item
+    ));
+    setEditingQuestion(null);
+  }, []);
+
+  const handleQuestionDelete = useCallback((id: string) => {
+    setQuestions((prev) => prev.filter((item) => item.dbId !== id));
+    setEditingQuestion(null);
+  }, []);
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(questions.map((q) => q.category ?? ""))).filter(Boolean).sort();
@@ -149,7 +160,8 @@ export default function ExamQuestionTable({ examId, userEmail }: Props) {
                       <tr
                         key={q.dbId}
                         className="hover:bg-gray-50 cursor-pointer transition-colors"
-                        onDoubleClick={() => setModal(q)}
+                        onDoubleClick={() => setEditingQuestion(q)}
+                        title="Double-click to edit"
                       >
                         <td className="px-3 py-0 h-10 text-gray-400 tabular-nums w-12">{q.id}</td>
                         <td className="px-3 py-0 h-10 max-w-0">
@@ -186,70 +198,13 @@ export default function ExamQuestionTable({ examId, userEmail }: Props) {
         </div>
       )}
 
-      {/* Double-click modal */}
-      {modal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-[2px]"
-          onClick={() => setModal(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-              <span className="text-sm font-semibold text-gray-700">Q{modal.id}</span>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-xs text-rose-500 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={modal.invalidated}
-                    disabled={togglingId === modal.dbId || !userEmail}
-                    onChange={() => {}}
-                    onClick={(e) => toggleInvalidated(modal, e)}
-                    className="w-3.5 h-3.5 rounded accent-rose-500 cursor-pointer disabled:opacity-40"
-                  />
-                  Invalidated
-                </label>
-                <button onClick={() => setModal(null)} className="text-gray-300 hover:text-gray-600 transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="px-6 py-4 space-y-4">
-              <RichText text={modal.question} block className="text-sm text-gray-800 leading-relaxed" />
-              <div className="space-y-2">
-                {modal.choices.map((c) => {
-                  const isCorrect = modal.answers.includes(c.label);
-                  return (
-                    <div
-                      key={c.label}
-                      className={`flex items-start gap-3 px-4 py-2.5 rounded-xl border text-sm ${
-                        isCorrect
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                          : "border-gray-100 text-gray-600"
-                      }`}
-                    >
-                      <span className={`shrink-0 w-6 h-6 rounded-lg text-xs font-bold flex items-center justify-center ${
-                        isCorrect ? "bg-emerald-500 text-white" : "border border-gray-200 text-gray-400"
-                      }`}>
-                        {c.label}
-                      </span>
-                      <RichText text={c.text} className="leading-snug" />
-                    </div>
-                  );
-                })}
-              </div>
-              {modal.explanation && (
-                <div className="text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-3 leading-relaxed">
-                  <RichText text={modal.explanation} block />
-                </div>
-              )}
-              {modal.category && (
-                <p className="text-xs text-gray-400">Category: {modal.category}</p>
-              )}
-            </div>
-          </div>
-        </div>
+      {editingQuestion && (
+        <QuestionEditModal
+          question={editingQuestion}
+          onClose={() => setEditingQuestion(null)}
+          onSave={handleQuestionSave}
+          onDelete={handleQuestionDelete}
+        />
       )}
     </div>
   );
