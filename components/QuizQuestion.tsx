@@ -166,7 +166,7 @@ export default function QuizQuestion({
                 <span className={`shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-lg border text-xs lg:text-sm font-bold flex items-center justify-center transition-all duration-150 ${badge}`}>
                   {choice.label}
                 </span>
-                <RichText text={choice.text} className={`text-sm lg:text-base leading-relaxed pt-0.5 ${textColor}`} />
+                <RichText text={choice.text} block className={`text-sm lg:text-base leading-relaxed pt-0.5 ${textColor}`} />
               </div>
             </button>
           );
