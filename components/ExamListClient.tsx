@@ -198,7 +198,7 @@ export default function ExamListClient({ exams: initialExams }: Props) {
       const res = await fetch(`/api/admin/exams/${examId}/fill`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userPrompt: settings.aiFillPrompt }),
+        body: JSON.stringify({ userPrompt: settings.aiPrompt }),
       });
       if (!res.body) { setFillStatus("error"); return; }
       const reader = res.body.getReader();
@@ -222,7 +222,7 @@ export default function ExamListClient({ exams: initialExams }: Props) {
     } catch {
       setFillStatus("error");
     }
-  }, [settings.aiFillPrompt]);
+  }, [settings.aiPrompt]);
 
   // Global drag & drop
   useEffect(() => {

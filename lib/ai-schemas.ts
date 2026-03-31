@@ -42,6 +42,7 @@ export type AiRefineResponse = z.infer<typeof AiRefineResponseSchema>;
 
 // ── Fill ──────────────────────────────────────────────────────────────────────
 // Used by: app/api/admin/exams/[id]/fill
+// Fill now uses the same explain prompt format (aiPrompt) + a category field appended.
 
 export const AdminFillResultSchema = z.object({
   id: z.string(),
@@ -53,6 +54,15 @@ export const AdminFillResultSchema = z.object({
 export const AdminFillResultsSchema = z.array(AdminFillResultSchema);
 
 export type AdminFillResult = z.infer<typeof AdminFillResultSchema>;
+
+// Schema for parsing fill responses that use the explain prompt format
+export const FillFromExplainSchema = z.object({
+  highlights: z.array(z.string()).optional(),
+  explanation: z.string(),
+  answers: z.array(z.string()),
+  reasoning: z.string().optional(),
+  category: z.string().optional(),
+});
 
 // ── Translate ─────────────────────────────────────────────────────────────────
 // Used by: app/api/admin/exams/[id]/translate

@@ -2,11 +2,11 @@ export const runtime = 'edge';
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getDB, getSetting } from "@/lib/db";
-import { DEFAULT_FILL_PROMPT } from "@/lib/types";
+import { DEFAULT_EXPLAIN_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth";
 import { parseAiJsonAs } from "@/lib/ai-json";
-import { AdminFillResultsSchema } from "@/lib/ai-schemas";
+import { FillFromExplainSchema } from "@/lib/ai-schemas";
 
 interface QuestionRow {
   id: string;
@@ -136,22 +136,25 @@ Example: ["Core Mule Concepts", "DataWeave", "Anypoint Platform"]`;
               continue;
             }
 
-            const singleJson = JSON.stringify([{
-              id: q.id,
-              question: q.question_text,
-              choices,
-              missing,
-            }]);
-
-            const template = userPrompt || DEFAULT_FILL_PROMPT;
-            const categoryConstraint = canonicalCategories.length >= 3 && missing.includes("category")
-              ? `\n\nIMPORTANT: For "category", assign exactly one from this list: ${canonicalCategories.map((c) => `"${c}"`).join(", ")}`
+            // Use the same explain prompt (aiPrompt) for fill — ensures identical quality
+            const choicesText = choices.map((c: Choice) => `${c.label}. ${c.text}`).join("\n");
+            const answersText = answers.length > 0 ? answers.join(", ") : "(unknown — determine the correct answer from the question and choices)";
+            const explanationLine = q.explanation ? `Current explanation on record: ${q.explanation}` : "";
+            const categoryConstraint = missing.includes("category")
+              ? `\n\nADDITIONAL FIELD: Also include a "category" field in your JSON response: a short topic/domain label${canonicalCategories.length >= 3 ? `. Use exactly one of: ${canonicalCategories.map((c) => `"${c}"`).join(", ")}` : ' (e.g. "Data Management", "Security Model", "Automation", "Reporting").'}`
               : "";
-            const prompt = template.replace("{questions}", singleJson) + categoryConstraint;
 
-            let results: { id: string; answers?: string[]; explanation?: string; category?: string }[] | null = null;
+            const template = userPrompt || DEFAULT_EXPLAIN_PROMPT;
+            const prompt = template
+              .replace("{question}", q.question_text)
+              .replace("{choices}", choicesText)
+              .replace("{answers}", answersText)
+              .replace("{explanation}", explanationLine)
+              + categoryConstraint;
+
+            let result: { answers?: string[]; explanation?: string; category?: string } | null = null;
             let retries = 2;
-            while (retries >= 0 && results === null) {
+            while (retries >= 0 && result === null) {
               try {
                 const resp = await ai.models.generateContent({
                   model,
@@ -160,16 +163,15 @@ Example: ["Core Mule Concepts", "DataWeave", "Anypoint Platform"]`;
                 });
                 const text = (resp.text ?? "").trim()
                   .replace(/^```json\s*/i, "").replace(/\s*```$/, "");
-                const { data, error } = parseAiJsonAs(text, AdminFillResultsSchema);
-                if (data) results = data;
+                const { data, error } = parseAiJsonAs(text, FillFromExplainSchema);
+                if (data) result = data;
                 else if (error) retries--;
               } catch {
                 retries--;
               }
             }
 
-            if (results && results.length > 0) {
-              const result = results[0];
+            if (result) {
               const newAnswers = missing.includes("answers") && Array.isArray(result.answers) && result.answers.length > 0 ? JSON.stringify(result.answers) : null;
               const newExplanation = missing.includes("explanation") && result.explanation ? result.explanation : null;
               const newCategory = missing.includes("category") && result.category ? result.category : null;

@@ -689,7 +689,7 @@ export async function getAllUserSettings(userEmail: string): Promise<UserSetting
     } else if (row.key === "audioMode" || row.key === "skipRevealOnCorrect") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (raw as any)[row.key] = row.value === "true" || row.value === "1";
-    } else if (row.key === "aiPromptVersions" || row.key === "aiRefinePromptVersions" || row.key === "studyGuidePromptVersions" || row.key === "aiFillPromptVersions" || row.key === "aiFactCheckPromptVersions") {
+    } else if (row.key === "aiPromptVersions" || row.key === "aiRefinePromptVersions" || row.key === "studyGuidePromptVersions" || row.key === "aiFactCheckPromptVersions") {
       try {
         const parsed = JSON.parse(row.value);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -707,11 +707,9 @@ export async function getAllUserSettings(userEmail: string): Promise<UserSetting
   if (!merged.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;
   if (!merged.aiRefinePrompt) merged.aiRefinePrompt = DEFAULT_USER_SETTINGS.aiRefinePrompt;
   if (!merged.studyGuidePrompt) merged.studyGuidePrompt = DEFAULT_USER_SETTINGS.studyGuidePrompt;
-  if (!merged.aiFillPrompt) merged.aiFillPrompt = DEFAULT_USER_SETTINGS.aiFillPrompt;
   if (!Array.isArray(merged.aiPromptVersions)) merged.aiPromptVersions = [];
   if (!Array.isArray(merged.aiRefinePromptVersions)) merged.aiRefinePromptVersions = [];
   if (!Array.isArray(merged.studyGuidePromptVersions)) merged.studyGuidePromptVersions = [];
-  if (!Array.isArray(merged.aiFillPromptVersions)) merged.aiFillPromptVersions = [];
   return merged;
 }
 

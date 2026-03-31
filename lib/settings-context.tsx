@@ -42,12 +42,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         merged.aiPrompt = upgradeIfOldDefault(merged.aiPrompt, DEFAULT_USER_SETTINGS.aiPrompt);
         merged.aiRefinePrompt = upgradeIfOldDefault(merged.aiRefinePrompt, DEFAULT_USER_SETTINGS.aiRefinePrompt);
         merged.studyGuidePrompt = upgradeIfOldDefault(merged.studyGuidePrompt, DEFAULT_USER_SETTINGS.studyGuidePrompt);
-        merged.aiFillPrompt = upgradeIfOldDefault(merged.aiFillPrompt, DEFAULT_USER_SETTINGS.aiFillPrompt);
         merged.aiFactCheckPrompt = upgradeIfOldDefault(merged.aiFactCheckPrompt ?? DEFAULT_FACTCHECK_PROMPT, DEFAULT_USER_SETTINGS.aiFactCheckPrompt);
         if (!Array.isArray(merged.aiPromptVersions)) merged.aiPromptVersions = [];
         if (!Array.isArray(merged.aiRefinePromptVersions)) merged.aiRefinePromptVersions = [];
         if (!Array.isArray(merged.studyGuidePromptVersions)) merged.studyGuidePromptVersions = [];
-        if (!Array.isArray(merged.aiFillPromptVersions)) merged.aiFillPromptVersions = [];
         if (!Array.isArray(merged.aiFactCheckPromptVersions)) merged.aiFactCheckPromptVersions = [];
         setSettings(merged);
         // Sync to localStorage as cache
@@ -64,12 +62,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             merged.aiPrompt = upgradeIfOldDefault(merged.aiPrompt, DEFAULT_USER_SETTINGS.aiPrompt);
             merged.aiRefinePrompt = upgradeIfOldDefault(merged.aiRefinePrompt, DEFAULT_USER_SETTINGS.aiRefinePrompt);
             merged.studyGuidePrompt = upgradeIfOldDefault(merged.studyGuidePrompt, DEFAULT_USER_SETTINGS.studyGuidePrompt);
-            merged.aiFillPrompt = upgradeIfOldDefault(merged.aiFillPrompt, DEFAULT_USER_SETTINGS.aiFillPrompt);
             merged.aiFactCheckPrompt = upgradeIfOldDefault(merged.aiFactCheckPrompt ?? DEFAULT_FACTCHECK_PROMPT, DEFAULT_USER_SETTINGS.aiFactCheckPrompt);
             if (!Array.isArray(merged.aiPromptVersions)) merged.aiPromptVersions = [];
             if (!Array.isArray(merged.aiRefinePromptVersions)) merged.aiRefinePromptVersions = [];
             if (!Array.isArray(merged.studyGuidePromptVersions)) merged.studyGuidePromptVersions = [];
-            if (!Array.isArray(merged.aiFillPromptVersions)) merged.aiFillPromptVersions = [];
             if (!Array.isArray(merged.aiFactCheckPromptVersions)) merged.aiFactCheckPromptVersions = [];
             setSettings(merged);
           }

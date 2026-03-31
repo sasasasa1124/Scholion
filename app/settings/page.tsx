@@ -8,7 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { useSettings } from "@/lib/settings-context";
 import { useSetHeader } from "@/lib/header-context";
 import type { PromptVersion } from "@/lib/types";
-import { DEFAULT_EXPLAIN_PROMPT, DEFAULT_REFINE_PROMPT, DEFAULT_STUDY_GUIDE_PROMPT, DEFAULT_FILL_PROMPT, DEFAULT_FACTCHECK_PROMPT } from "@/lib/types";
+import { DEFAULT_EXPLAIN_PROMPT, DEFAULT_REFINE_PROMPT, DEFAULT_STUDY_GUIDE_PROMPT, DEFAULT_FACTCHECK_PROMPT } from "@/lib/types";
 
 type PromptKey = "explain" | "refine" | "studyguide" | "fill" | "factcheck";
 
@@ -272,9 +272,6 @@ function SettingsInner() {
   const [studyGuidePrompt, setStudyGuidePrompt] = useState(settings.studyGuidePrompt);
   const [studyGuidePromptAuthor, setStudyGuidePromptAuthor] = useState(settings.studyGuidePromptAuthor ?? "");
   const [studyGuidePromptVersions, setStudyGuidePromptVersions] = useState<PromptVersion[]>(settings.studyGuidePromptVersions ?? []);
-  const [aiFillPrompt, setAiFillPrompt] = useState(settings.aiFillPrompt);
-  const [aiFillPromptAuthor, setAiFillPromptAuthor] = useState(settings.aiFillPromptAuthor ?? "");
-  const [aiFillPromptVersions, setAiFillPromptVersions] = useState<PromptVersion[]>(settings.aiFillPromptVersions ?? []);
   const [aiFactCheckPrompt, setAiFactCheckPrompt] = useState(settings.aiFactCheckPrompt ?? DEFAULT_FACTCHECK_PROMPT);
   const [aiFactCheckPromptAuthor, setAiFactCheckPromptAuthor] = useState(settings.aiFactCheckPromptAuthor ?? "");
   const [aiFactCheckPromptVersions, setAiFactCheckPromptVersions] = useState<PromptVersion[]>(settings.aiFactCheckPromptVersions ?? []);
@@ -303,9 +300,6 @@ function SettingsInner() {
     setStudyGuidePrompt(settings.studyGuidePrompt);
     setStudyGuidePromptAuthor(settings.studyGuidePromptAuthor || userDisplayName);
     setStudyGuidePromptVersions(settings.studyGuidePromptVersions ?? []);
-    setAiFillPrompt(settings.aiFillPrompt);
-    setAiFillPromptAuthor(settings.aiFillPromptAuthor || userDisplayName);
-    setAiFillPromptVersions(settings.aiFillPromptVersions ?? []);
     setAiFactCheckPrompt(settings.aiFactCheckPrompt ?? DEFAULT_FACTCHECK_PROMPT);
     setAiFactCheckPromptAuthor(settings.aiFactCheckPromptAuthor || userDisplayName);
     setAiFactCheckPromptVersions(settings.aiFactCheckPromptVersions ?? []);
@@ -349,7 +343,6 @@ function SettingsInner() {
       aiPrompt, aiPromptAuthor, aiPromptVersions,
       aiRefinePrompt, aiRefinePromptAuthor, aiRefinePromptVersions,
       studyGuidePrompt, studyGuidePromptAuthor, studyGuidePromptVersions,
-      aiFillPrompt, aiFillPromptAuthor, aiFillPromptVersions,
       aiFactCheckPrompt, aiFactCheckPromptAuthor, aiFactCheckPromptVersions,
       dailyGoal, audioMode, audioSpeed, audioPrefetch, skipRevealOnCorrect,
     });
@@ -406,15 +399,6 @@ function SettingsInner() {
       defaultLabel: "default",
     },
     {
-      key: "fill",
-      label: "AI Fill Prompt",
-      icon: <Sparkles size={13} className="text-sky-400" />,
-      accentClass: "text-sky-400",
-      ringClass: "focus:ring-sky-400",
-      defaultPrompt: DEFAULT_FILL_PROMPT,
-      defaultLabel: "default",
-    },
-    {
       key: "factcheck",
       label: t("aiFactCheckPrompt"),
       icon: <ShieldCheck size={13} className="text-indigo-400" />,
@@ -462,15 +446,6 @@ function SettingsInner() {
             />
             <PromptSection
               config={promptConfigs[3]}
-              prompt={aiFillPrompt}
-              setPrompt={setAiFillPrompt}
-              author={aiFillPromptAuthor}
-              setAuthor={setAiFillPromptAuthor}
-              versions={aiFillPromptVersions}
-              setVersions={setAiFillPromptVersions}
-            />
-            <PromptSection
-              config={promptConfigs[4]}
               prompt={aiFactCheckPrompt}
               setPrompt={setAiFactCheckPrompt}
               author={aiFactCheckPromptAuthor}
