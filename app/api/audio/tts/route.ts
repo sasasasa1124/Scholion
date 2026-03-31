@@ -101,7 +101,8 @@ export async function POST(req: NextRequest) {
     });
 
     const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) {
+    // Require at least 1000 chars of base64 (≈ 750 bytes PCM — prevents caching empty/garbage responses)
+    if (!audioData || audioData.length < 1000) {
       return NextResponse.json({ error: "No audio data in response" }, { status: 502 });
     }
     base64Audio = audioData;

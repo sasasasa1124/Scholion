@@ -391,12 +391,12 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
     if (mode !== "review") {
       setStreak((prev) => correct ? prev + 1 : 0);
     }
-    if (correct && settings.skipRevealOnCorrect && !settings.audioMode && mode === "quiz") {
+    if (correct && settings.skipRevealOnCorrect && mode === "quiz") {
       goNext();
     } else {
       setSubmitted(true);
     }
-  }, [filteredQuestions, currentIndex, filter, selected, recordAnswer, mode, settings.skipRevealOnCorrect, settings.audioMode]);
+  }, [filteredQuestions, currentIndex, filter, selected, recordAnswer, mode, settings.skipRevealOnCorrect]);
 
   const goNext = useCallback(() => {
     setIsCorrect(null);

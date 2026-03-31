@@ -77,8 +77,8 @@ export function useAudio() {
   }, []);
 
   const speak = useCallback(
-    async (texts: string[]) => {
-      if (!settings.audioMode) return;
+    async (texts: string[], opts?: { force?: boolean }) => {
+      if (!opts?.force && !settings.audioMode) return;
       stop();
 
       const token = Symbol();

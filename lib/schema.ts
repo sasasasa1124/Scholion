@@ -38,6 +38,8 @@ export const questionHistory = sqliteTable("question_history", {
   options: text("options").notNull(),
   answers: text("answers").notNull(),
   explanation: text("explanation").default(""),
+  source: text("source").default(""),
+  explanationSources: text("explanation_sources").default("[]"),
   version: integer("version").notNull(),
   changedAt: text("changed_at"),
   changedBy: text("changed_by"),
