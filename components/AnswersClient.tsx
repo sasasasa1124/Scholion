@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, Sparkles, Wand2, ShieldCheck, Pencil, RotateCcw, Loader2, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Wand2, ShieldCheck, Pencil, RotateCcw, Loader2, Clock } from "lucide-react";
 import type { Question, QuestionHistoryEntry } from "@/lib/types";
 import { RichText } from "./RichText";
 import QuizHeader from "./QuizHeader";
@@ -10,7 +10,6 @@ import { useStatsSync } from "@/hooks/useStatsSync";
 import { useAiPopups } from "@/hooks/useAiPopups";
 
 const QuestionEditModal = dynamic(() => import("./QuestionEditModal"), { ssr: false });
-const AiExplainPopup = dynamic(() => import("./AiExplainPopup"), { ssr: false });
 const AiRefinePopup = dynamic(() => import("./AiRefinePopup"), { ssr: false });
 const AiFactCheckPopup = dynamic(() => import("./AiFactCheckPopup"), { ssr: false });
 import { useSettings } from "@/lib/settings-context";
@@ -133,8 +132,6 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   }, []);
 
   const {
-    aiPopupOpen, aiLoading, aiResult, aiError, aiAdopting, aiSuggesting,
-    handleAiExplain, handleAiAdopt, handleAiSuggest, dismissExplain,
     refinePopupOpen, refineLoading, refineResult, refineError, refineAdopting,
     handleAiRefine, handleRefineAdopt, dismissRefine,
     factCheckPopupOpen, factCheckLoading, factCheckResult, factCheckError, factCheckAdopting,
@@ -158,13 +155,13 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (editingQuestion || aiPopupOpen || refinePopupOpen || factCheckPopupOpen) return;
+      if (editingQuestion || refinePopupOpen || factCheckPopupOpen) return;
       if (e.key === "ArrowRight" || e.key === "Enter") goNext();
       else if (e.key === "ArrowLeft") goPrev();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [editingQuestion, aiPopupOpen, refinePopupOpen, factCheckPopupOpen, goNext, goPrev]);
+  }, [editingQuestion, refinePopupOpen, factCheckPopupOpen, goNext, goPrev]);
 
   // Touch swipe
   const touchStartX = useRef<number | null>(null);
@@ -357,14 +354,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
                   <ShieldCheck size={11} />
                   {t("factCheck")}
                 </button>
-                <button
-                  onClick={handleAiExplain}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md bg-violet-50 border border-violet-200 text-violet-600 hover:bg-violet-100 transition-colors"
-                  title={t("explain")}
-                >
-                  <Sparkles size={11} />
-                  {t("explain")}
-                </button>
+
               </div>
             </div>
             {q.explanation ? (
@@ -424,20 +414,6 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           question={editingQuestion}
           onClose={() => setEditingQuestion(null)}
           onSave={handleQuestionSave}
-        />
-      )}
-
-      {/* AI Explain popup */}
-      {aiPopupOpen && (
-        <AiExplainPopup
-          loading={aiLoading}
-          result={aiResult}
-          error={aiError}
-          adopting={aiAdopting}
-          onAdopt={handleAiAdopt}
-          onDismiss={dismissExplain}
-          onSuggest={handleAiSuggest}
-          suggesting={aiSuggesting}
         />
       )}
 

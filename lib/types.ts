@@ -296,8 +296,21 @@ IMPORTANT: Write the explanation in the same language as the question text. If t
 export const DEFAULT_FILL_PROMPT = `You are a Salesforce/MuleSoft certification exam expert with access to Google Search for fact verification.
 
 For each question in the JSON array below, fill in the fields listed in "missing":
-- "answers": array of correct choice labels (e.g. ["A"] or ["A","C"]). Verify with Google Search.
-- "explanation": 2-3 paragraph explanation of why the answers are correct and why incorrect options are wrong.
+- "answers": array of correct choice labels (e.g. ["A"] or ["A","C"]). Verify with Google Search using official sources (help.salesforce.com, developer.salesforce.com, trailhead.salesforce.com, docs.mulesoft.com).
+- "explanation": structured explanation using the three sections below (use exact headers):
+
+[Key Concepts]
+The core Salesforce/MuleSoft concepts tested. 3–5 bullet points or sentences.
+
+[Answer Analysis]
+Per-choice breakdown using the choice labels explicitly:
+A: <correct/incorrect — reason>
+B: <correct/incorrect — reason>
+(continue for all choices)
+
+[Reasoning]
+Step-by-step elimination — how a test-taker should narrow down to the correct answer using the key concepts and choice comparisons.
+
 - "category": short topic/domain label (e.g. "Data Management", "Security Model", "Automation", "Reporting").
 
 Return a JSON array (no markdown, no code blocks) with this exact structure for every question:
