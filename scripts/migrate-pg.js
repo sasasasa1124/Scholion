@@ -17,7 +17,8 @@ async function migrate() {
   }
 
   console.log("[migrate] Connecting to PostgreSQL...");
-  const sql = postgres(url, { max: 1, connect_timeout: 30 });
+  const ssl = url.includes("rds.amazonaws.com") ? { rejectUnauthorized: false } : false;
+  const sql = postgres(url, { max: 1, connect_timeout: 30, ssl });
 
   try {
     const migrationPath = path.join(
