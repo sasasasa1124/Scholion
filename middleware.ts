@@ -19,7 +19,7 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
   }
-}, { signInUrl: "/login" });
+}, { signInUrl: process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL || "/login" });
 
 export const config = {
   matcher: [
