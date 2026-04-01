@@ -9,6 +9,9 @@ ARG NEXT_PUBLIC_COGNITO_REGION=us-west-2
 ENV NEXT_PUBLIC_COGNITO_USER_POOL_ID=$NEXT_PUBLIC_COGNITO_USER_POOL_ID
 ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID
 ENV NEXT_PUBLIC_COGNITO_REGION=$NEXT_PUBLIC_COGNITO_REGION
+# Strip Edge runtime declarations — App Runner runs Node.js (not Cloudflare Workers).
+# Cloudflare uses a separate build pipeline (npm run build:cf) so this doesn't affect it.
+RUN grep -rl "export const runtime = 'edge'" app/ | xargs sed -i "s/export const runtime = 'edge';//g" || true
 RUN npm run build
 
 FROM public.ecr.aws/docker/library/node:22-alpine AS runner

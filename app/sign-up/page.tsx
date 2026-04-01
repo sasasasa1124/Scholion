@@ -1,9 +1,10 @@
 "use client";
 
 import { CognitoUserPool, CognitoUser, CognitoUserAttribute, AuthenticationDetails } from "amazon-cognito-identity-js";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useSettings } from "@/lib/settings-context";
 
 const DOMAIN = "salesforce.com";
 const pool = new CognitoUserPool({
@@ -13,6 +14,10 @@ const pool = new CognitoUserPool({
 
 function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") || "/";
+  const { t } = useSettings();
+
   const [step, setStep] = useState<"form" | "verify">("form");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +30,7 @@ function SignUpForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) { setError("ユーザー名を入力してください"); return; }
+    if (!username.trim()) { setError(t("emailAddress")); return; }
     setError("");
     setLoading(true);
     try {
@@ -50,7 +55,6 @@ function SignUpForm() {
     setError("");
     setLoading(true);
     try {
-      // Confirm registration
       await new Promise<void>((resolve, reject) => {
         const user = new CognitoUser({ Username: email, Pool: pool });
         user.confirmRegistration(code, true, (err) => {
@@ -59,7 +63,6 @@ function SignUpForm() {
         });
       });
 
-      // Auto-login after verification
       const idToken = await new Promise<string>((resolve, reject) => {
         const user = new CognitoUser({ Username: email, Pool: pool });
         const authDetails = new AuthenticationDetails({ Username: email, Password: password });
@@ -75,7 +78,7 @@ function SignUpForm() {
         body: JSON.stringify({ idToken }),
       });
       if (!res.ok) throw new Error("セッション作成に失敗しました");
-      router.push("/");
+      router.push(next);
     } catch (err: unknown) {
       const e = err as { message?: string };
       setError(e.message || "確認に失敗しました");
@@ -87,14 +90,14 @@ function SignUpForm() {
   if (step === "verify") {
     return (
       <div className="w-full max-w-sm">
-        <h1 className="text-xl font-semibold text-gray-900 mb-2 text-center">メール確認</h1>
+        <h1 className="text-xl font-semibold text-gray-900 mb-2 text-center">{t("verifyEmail")}</h1>
         <p className="text-sm text-gray-400 text-center mb-6">
-          確認コードを <span className="font-medium text-gray-700">{email}</span> に送信しました
+          {t("codeSentTo")} <span className="font-medium text-gray-700">{email}</span>
         </p>
         <form onSubmit={handleVerify} className="space-y-4">
           <div>
             <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
-              確認コード
+              {t("verificationCode")}
             </label>
             <input
               type="text"
@@ -110,11 +113,11 @@ function SignUpForm() {
           {error && <p className="text-xs text-rose-500">{error}</p>}
           <button type="submit" disabled={loading}
             className="w-full h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50">
-            {loading ? "確認中..." : "確認する"}
+            {loading ? t("confirming") : t("confirmCode")}
           </button>
           <button type="button" onClick={() => { setStep("form"); setError(""); setCode(""); }}
             className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors">
-            戻る
+            {t("back")}
           </button>
         </form>
       </div>
@@ -123,11 +126,11 @@ function SignUpForm() {
 
   return (
     <div className="w-full max-w-sm">
-      <h1 className="text-xl font-semibold text-gray-900 mb-6 text-center">新規登録</h1>
+      <h1 className="text-xl font-semibold text-gray-900 mb-6 text-center">{t("signUp")}</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
-            メールアドレス
+            {t("emailAddress")}
           </label>
           <div className="flex h-10 rounded-xl border border-gray-200 bg-white overflow-hidden focus-within:border-gray-400">
             <input type="text" value={username}
@@ -140,7 +143,7 @@ function SignUpForm() {
         </div>
         <div>
           <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
-            パスワード
+            {t("password")}
           </label>
           <div className="relative">
             <input type={showPassword ? "text" : "password"} value={password}
@@ -156,11 +159,11 @@ function SignUpForm() {
         {error && <p className="text-xs text-rose-500">{error}</p>}
         <button type="submit" disabled={loading}
           className="w-full h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50">
-          {loading ? "登録中..." : "アカウント作成"}
+          {loading ? t("registering") : t("signUp")}
         </button>
         <p className="text-xs text-center text-gray-400">
-          すでにアカウントをお持ちの方は{" "}
-          <a href="/login" className="text-gray-700 font-medium hover:underline">ログイン</a>
+          {t("alreadyHaveAccount")}{" "}
+          <a href={`/login?next=${encodeURIComponent(next)}`} className="text-gray-700 font-medium hover:underline">{t("signIn")}</a>
         </p>
       </form>
     </div>
@@ -169,7 +172,7 @@ function SignUpForm() {
 
 export default function SignUpPage() {
   return (
-    <div className="min-h-screen bg-[#f8f9fb] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#f8f9fb] flex items-center justify-center px-4 pt-14">
       <Suspense><SignUpForm /></Suspense>
     </div>
   );
