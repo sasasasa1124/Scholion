@@ -108,11 +108,12 @@ export function useAiPopups({
           options: currentQuestion.choices,
           answers: aiResult.answers,
           explanation: aiResult.explanation,
+          explanation_sources: aiResult.sources ?? [],
           change_reason: "AI-generated via Gemini",
         }),
       });
       if (!res.ok) throw new Error("Update failed");
-      onQuestionUpdate({ ...currentQuestion, answers: aiResult.answers, explanation: aiResult.explanation });
+      onQuestionUpdate({ ...currentQuestion, answers: aiResult.answers, explanation: aiResult.explanation, explanationSources: aiResult.sources ?? [] });
       setAiPopupOpen(false);
       setAiResult(null);
     } catch (e) {
@@ -250,6 +251,7 @@ export function useAiPopups({
           options: currentQuestion.choices,
           answers: newAnswers,
           explanation: factCheckResult?.explanation || currentQuestion.explanation,
+          explanation_sources: factCheckResult?.sources ?? [],
           change_reason: "AI fact-check: answer corrected",
         }),
       });
@@ -258,6 +260,7 @@ export function useAiPopups({
         ...currentQuestion,
         answers: newAnswers,
         explanation: factCheckResult?.explanation || currentQuestion.explanation,
+        explanationSources: factCheckResult?.sources ?? [],
       });
       setFactCheckPopupOpen(false);
       setFactCheckResult(null);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, Sparkles, Wand2, ShieldCheck, Pencil, RotateCcw, Loader2, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Wand2, ShieldCheck, Pencil, RotateCcw, Loader2, Clock, Volume2 } from "lucide-react";
 import type { Question, QuestionHistoryEntry } from "@/lib/types";
 import { RichText } from "./RichText";
 import QuizHeader from "./QuizHeader";
@@ -10,7 +10,6 @@ import { useStatsSync } from "@/hooks/useStatsSync";
 import { useAiPopups } from "@/hooks/useAiPopups";
 
 const QuestionEditModal = dynamic(() => import("./QuestionEditModal"), { ssr: false });
-const AiExplainPopup = dynamic(() => import("./AiExplainPopup"), { ssr: false });
 const AiRefinePopup = dynamic(() => import("./AiRefinePopup"), { ssr: false });
 const AiFactCheckPopup = dynamic(() => import("./AiFactCheckPopup"), { ssr: false });
 import { useSettings } from "@/lib/settings-context";
@@ -36,6 +35,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const [revertingHistoryId, setRevertingHistoryId] = useState<number | null>(null);
   const { stats } = useStatsSync(examId);
   const [filter, setFilter] = useState<"all" | "wrong">("all");
+  const [localAudioMode, setLocalAudioMode] = useState<"auto" | "on" | "off">("off");
 
   useSetHeader({ hidden: true }, []);
   const { settings, t } = useSettings();
@@ -73,21 +73,22 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
     }
   }, [filteredQuestions.length, currentIndex]);
 
-  // Auto-play when question changes; auto-advance to next when audio finishes
+  // Auto-play when question changes; auto-advance to next when audio finishes (Auto mode only)
   useEffect(() => {
+    if (localAudioMode === "off") return;
     const q = filteredQuestions[currentIndex];
     if (!q) return;
     const next = filteredQuestions[currentIndex + 1];
     if (next) prefetch(buildAnswerText(next, settings.language)[0]);
     let cancelled = false;
-    speak(buildAnswerText(q, settings.language)).then(() => {
-      if (!cancelled && next && settings.audioMode) {
+    speak(buildAnswerText(q, settings.language), { force: true }).then(() => {
+      if (!cancelled && next && localAudioMode === "auto") {
         setCurrentIndex((i) => i + 1);
       }
     });
     return () => { cancelled = true; stop(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, speak, stop, prefetch, settings.language, settings.audioMode]);
+  }, [currentIndex, localAudioMode, speak, stop, prefetch, settings.language]);
 
   const handleVersionPanelToggle = useCallback(async () => {
     const q = filteredQuestions[currentIndex];
@@ -117,6 +118,8 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           options: h.options,
           answers: h.answers,
           explanation: h.explanation,
+          source: h.source,
+          explanation_sources: h.explanationSources,
           change_reason: `Reverted to v${h.version}`,
         }),
       });
@@ -133,8 +136,6 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   }, []);
 
   const {
-    aiPopupOpen, aiLoading, aiResult, aiError, aiAdopting, aiSuggesting,
-    handleAiExplain, handleAiAdopt, handleAiSuggest, dismissExplain,
     refinePopupOpen, refineLoading, refineResult, refineError, refineAdopting,
     handleAiRefine, handleRefineAdopt, dismissRefine,
     factCheckPopupOpen, factCheckLoading, factCheckResult, factCheckError, factCheckAdopting,
@@ -153,18 +154,18 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const handleReplay = useCallback(() => {
     const q = filteredQuestions[currentIndex];
     if (!q) return;
-    speak(buildAnswerText(q, settings.language));
+    speak(buildAnswerText(q, settings.language), { force: true });
   }, [filteredQuestions, currentIndex, speak, settings.language]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (editingQuestion || aiPopupOpen || refinePopupOpen || factCheckPopupOpen) return;
+      if (editingQuestion || refinePopupOpen || factCheckPopupOpen) return;
       if (e.key === "ArrowRight" || e.key === "Enter") goNext();
       else if (e.key === "ArrowLeft") goPrev();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [editingQuestion, aiPopupOpen, refinePopupOpen, factCheckPopupOpen, goNext, goPrev]);
+  }, [editingQuestion, refinePopupOpen, factCheckPopupOpen, goNext, goPrev]);
 
   // Touch swipe
   const touchStartX = useRef<number | null>(null);
@@ -357,14 +358,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
                   <ShieldCheck size={11} />
                   {t("factCheck")}
                 </button>
-                <button
-                  onClick={handleAiExplain}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md bg-violet-50 border border-violet-200 text-violet-600 hover:bg-violet-100 transition-colors"
-                  title={t("explain")}
-                >
-                  <Sparkles size={11} />
-                  {t("explain")}
-                </button>
+
               </div>
             </div>
             {q.explanation ? (
@@ -414,6 +408,23 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           >
             <ChevronRight size={15} />
           </button>
+          {/* Audio mode: Off / On / Auto */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Volume2 size={11} className="text-gray-300 mr-0.5" />
+            {(["off", "on", "auto"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setLocalAudioMode(m)}
+                className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                  localAudioMode === m
+                    ? "bg-gray-800 text-white"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                {m === "off" ? "Off" : m === "on" ? "On" : "Auto"}
+              </button>
+            ))}
+          </div>
           <span className="text-xs text-gray-300 ml-1 shrink-0 hidden lg:block">Enter →  ← </span>
         </div>
       </footer>
@@ -424,20 +435,6 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
           question={editingQuestion}
           onClose={() => setEditingQuestion(null)}
           onSave={handleQuestionSave}
-        />
-      )}
-
-      {/* AI Explain popup */}
-      {aiPopupOpen && (
-        <AiExplainPopup
-          loading={aiLoading}
-          result={aiResult}
-          error={aiError}
-          adopting={aiAdopting}
-          onAdopt={handleAiAdopt}
-          onDismiss={dismissExplain}
-          onSuggest={handleAiSuggest}
-          suggesting={aiSuggesting}
         />
       )}
 

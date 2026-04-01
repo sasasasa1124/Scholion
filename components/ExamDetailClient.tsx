@@ -102,7 +102,7 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
       const res = await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}/fill`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userPrompt: settings.aiFillPrompt, forceRefill: fillForce }),
+        body: JSON.stringify({ userPrompt: settings.aiPrompt, forceRefill: fillForce }),
       });
       if (!res.body) { setFillStatus("error"); return; }
       const reader = res.body.getReader();
@@ -147,7 +147,7 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
       setFillStatus("error");
       setTimeout(() => setFillStatus("idle"), 3000);
     }
-  }, [exam.id, settings.aiFillPrompt, fillForce, generateTts, fetchAudio, settings.language]);
+  }, [exam.id, settings.aiPrompt, fillForce, generateTts, fetchAudio, settings.language]);
 
   const startRefine = useCallback(async () => {
     setRefineStatus("running");

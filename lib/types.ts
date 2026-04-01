@@ -55,6 +55,8 @@ export interface QuestionHistoryEntry {
   options: Choice[];
   answers: string[];
   explanation: string;
+  source: string;
+  explanationSources: string[];
   version: number;
   changedAt: string;
   changedBy: string | null;
@@ -84,9 +86,6 @@ export interface UserSettings {
   studyGuidePrompt: string;
   studyGuidePromptAuthor: string;
   studyGuidePromptVersions: PromptVersion[];
-  aiFillPrompt: string;
-  aiFillPromptAuthor: string;
-  aiFillPromptVersions: PromptVersion[];
   aiFactCheckPrompt: string;
   aiFactCheckPromptAuthor: string;
   aiFactCheckPromptVersions: PromptVersion[];
@@ -293,22 +292,6 @@ Field definitions:
 
 IMPORTANT: Write the explanation in the same language as the question text. If the question is in Japanese, write in Japanese. If in English, write in English.`;
 
-export const DEFAULT_FILL_PROMPT = `You are a Salesforce/MuleSoft certification exam expert with access to Google Search for fact verification.
-
-For each question in the JSON array below, fill in the fields listed in "missing":
-- "answers": array of correct choice labels (e.g. ["A"] or ["A","C"]). Verify with Google Search.
-- "explanation": 2-3 paragraph explanation of why the answers are correct and why incorrect options are wrong.
-- "category": short topic/domain label (e.g. "Data Management", "Security Model", "Automation", "Reporting").
-
-Return a JSON array (no markdown, no code blocks) with this exact structure for every question:
-[{ "id": "<question id>", "answers": [...], "explanation": "...", "category": "..." }]
-
-Even if a field is not in "missing", include it in your response (copy from input or infer).
-
-IMPORTANT: Write the explanation field in the same language as the question text. If the question is in Japanese, write in Japanese. If in English, write in English.
-
-Questions:
-{questions}`;
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   language: "en",
@@ -321,9 +304,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   studyGuidePrompt: DEFAULT_STUDY_GUIDE_PROMPT,
   studyGuidePromptAuthor: "",
   studyGuidePromptVersions: [],
-  aiFillPrompt: DEFAULT_FILL_PROMPT,
-  aiFillPromptAuthor: "",
-  aiFillPromptVersions: [],
   aiFactCheckPrompt: DEFAULT_FACTCHECK_PROMPT,
   aiFactCheckPromptAuthor: "",
   aiFactCheckPromptVersions: [],

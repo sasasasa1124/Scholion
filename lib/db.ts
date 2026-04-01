@@ -261,13 +261,13 @@ export async function updateQuestion(id: string, data: QuestionUpdate, changedBy
   const pg = getDB();
   if (!pg) throw new Error("DB not available in local dev");
 
-  type CurrentRow = { question_text: string; options: string; answers: string; explanation: string; version: number };
-  const [current] = await pg<CurrentRow[]>`SELECT question_text, options, answers, explanation, version FROM questions WHERE id = ${id}`;
+  type CurrentRow = { question_text: string; options: string; answers: string; explanation: string; source: string; explanation_sources: string | null; version: number };
+  const [current] = await pg<CurrentRow[]>`SELECT question_text, options, answers, explanation, source, explanation_sources, version FROM questions WHERE id = ${id}`;
   if (!current) throw new Error(`Question ${id} not found`);
 
   await pg`
-    INSERT INTO question_history (question_id, question_text, options, answers, explanation, version, changed_by, change_reason)
-    VALUES (${id}, ${current.question_text}, ${current.options}, ${current.answers}, ${current.explanation}, ${current.version}, ${changedBy}, ${data.change_reason})`;
+    INSERT INTO question_history (question_id, question_text, options, answers, explanation, source, explanation_sources, version, changed_by, change_reason)
+    VALUES (${id}, ${current.question_text}, ${current.options}, ${current.answers}, ${current.explanation}, ${current.source ?? ""}, ${current.explanation_sources ?? "[]"}, ${current.version}, ${changedBy}, ${data.change_reason})`;
 
   await pg`
     UPDATE questions
@@ -338,6 +338,8 @@ export async function getQuestionHistory(questionId: string): Promise<QuestionHi
     options: JSON.parse(row.options) as Choice[],
     answers: JSON.parse(row.answers) as string[],
     explanation: row.explanation ?? "",
+    source: row.source ?? "",
+    explanationSources: JSON.parse(row.explanationSources ?? "[]") as string[],
     version: row.version,
     changedAt: row.changedAt ?? "",
     changedBy: row.changedBy ?? null,
@@ -687,7 +689,7 @@ export async function getAllUserSettings(userEmail: string): Promise<UserSetting
     } else if (row.key === "audioMode" || row.key === "skipRevealOnCorrect") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (raw as any)[row.key] = row.value === "true" || row.value === "1";
-    } else if (row.key === "aiPromptVersions" || row.key === "aiRefinePromptVersions" || row.key === "studyGuidePromptVersions" || row.key === "aiFillPromptVersions" || row.key === "aiFactCheckPromptVersions") {
+    } else if (row.key === "aiPromptVersions" || row.key === "aiRefinePromptVersions" || row.key === "studyGuidePromptVersions" || row.key === "aiFactCheckPromptVersions") {
       try {
         const parsed = JSON.parse(row.value);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -705,11 +707,9 @@ export async function getAllUserSettings(userEmail: string): Promise<UserSetting
   if (!merged.aiPrompt) merged.aiPrompt = DEFAULT_USER_SETTINGS.aiPrompt;
   if (!merged.aiRefinePrompt) merged.aiRefinePrompt = DEFAULT_USER_SETTINGS.aiRefinePrompt;
   if (!merged.studyGuidePrompt) merged.studyGuidePrompt = DEFAULT_USER_SETTINGS.studyGuidePrompt;
-  if (!merged.aiFillPrompt) merged.aiFillPrompt = DEFAULT_USER_SETTINGS.aiFillPrompt;
   if (!Array.isArray(merged.aiPromptVersions)) merged.aiPromptVersions = [];
   if (!Array.isArray(merged.aiRefinePromptVersions)) merged.aiRefinePromptVersions = [];
   if (!Array.isArray(merged.studyGuidePromptVersions)) merged.studyGuidePromptVersions = [];
-  if (!Array.isArray(merged.aiFillPromptVersions)) merged.aiFillPromptVersions = [];
   return merged;
 }
 
