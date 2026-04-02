@@ -64,7 +64,7 @@ function parseAnswers(raw) {
   return (raw || "").split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(s => /^[A-Z]$/.test(s));
 }
 
-function esc(s) { return (s || "").replace(/'/g, "''"); }
+function esc(s) { return (s || "").replace(/'/g, "''").replace(/\r/g, "").replace(/\n/g, "\\n"); }
 
 // Collect CSVs from quiz/ and parent dir, deduplicated by examId
 const dirs = [QUIZ_DIR, path.join(QUIZ_DIR, "..")];
