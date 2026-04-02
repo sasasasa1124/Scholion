@@ -34,14 +34,14 @@ async function migrate() {
       const content = fs.readFileSync(filePath, "utf8");
 
       // 0000_init_complete.sql uses --> statement-breakpoint separators
-      // 0001_seed_exams.sql is plain semicolon-terminated statements
+      // 0001_seed_exams.sql is plain semicolon-terminated statements (one per line)
       const statements = file.includes("init")
         ? content
             .split("--> statement-breakpoint")
             .map((s) => s.trim())
             .filter((s) => s.length > 0 && !s.startsWith("--"))
         : content
-            .split(/;\s*\n/)
+            .split("\n")
             .map((s) => s.trim())
             .filter((s) => s.length > 0 && !s.startsWith("--"));
 
