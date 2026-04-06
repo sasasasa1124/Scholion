@@ -1,11 +1,11 @@
 /**
  * Unified AI client adapter.
  *
- * DEPLOY_TARGET=aws  → AWS Bedrock (Claude) via x-api-key  (no internet required)
+ * DEPLOY_TARGET=aws  → AWS Bedrock (Claude) via SigV4 + IAM role  (no internet required)
  * otherwise          → Google Gemini (Cloudflare / local dev)
  *
  * Bedrock requires:
- *   - BEDROCK_API_KEY env var (stored in Secrets Manager)
+ *   - AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN (injected by App Runner instance role)
  *   - VPC endpoint: com.amazonaws.us-west-2.bedrock-runtime
  */
 
@@ -53,15 +53,82 @@ export async function aiGenerate(
   return geminiGenerate(prompt, options);
 }
 
+// ── SigV4 signing (Web Crypto API — edge-runtime compatible) ──────────────
+
+async function hmacSha256(key: ArrayBuffer | Uint8Array, msg: string): Promise<ArrayBuffer> {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg));
+}
+
+async function sha256hex(msg: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function sigV4Headers(url: string, bodyStr: string, region: string): Promise<Record<string, string>> {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID ?? "";
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY ?? "";
+  const sessionToken = process.env.AWS_SESSION_TOKEN;
+
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("AWS credentials not available (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)");
+  }
+
+  const service = "bedrock";
+  const now = new Date();
+  // yyyyMMdd
+  const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, "");
+  // yyyyMMddTHHmmssZ
+  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+  const host = new URL(url).hostname;
+  const path = new URL(url).pathname;
+
+  const payloadHash = await sha256hex(bodyStr);
+
+  // Canonical headers — must be sorted, lowercase
+  const headersToSign: Record<string, string> = {
+    "content-type": "application/json",
+    host,
+    "x-amz-date": amzDate,
+  };
+  if (sessionToken) headersToSign["x-amz-security-token"] = sessionToken;
+
+  const sortedKeys = Object.keys(headersToSign).sort();
+  const canonicalHeaders = sortedKeys.map((k) => `${k}:${headersToSign[k]}`).join("\n") + "\n";
+  const signedHeaders = sortedKeys.join(";");
+
+  const canonicalRequest = ["POST", path, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, await sha256hex(canonicalRequest)].join("\n");
+
+  const enc = new TextEncoder();
+  const kDate = await hmacSha256(enc.encode("AWS4" + secretAccessKey), dateStamp);
+  const kRegion = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, service);
+  const kSigning = await hmacSha256(kService, "aws4_request");
+  const sig = Array.from(new Uint8Array(await hmacSha256(kSigning, stringToSign)))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Amz-Date": amzDate,
+    Authorization: authHeader,
+  };
+  if (sessionToken) headers["X-Amz-Security-Token"] = sessionToken;
+  return headers;
+}
+
 // ── Bedrock (AWS) ─────────────────────────────────────────────────────────
 
 async function bedrockGenerate(
   prompt: string,
   options: AiGenerateOptions
 ): Promise<AiGenerateResult> {
-  const apiKey = process.env.BEDROCK_API_KEY;
-  if (!apiKey) throw new Error("BEDROCK_API_KEY not configured");
-
   // Build message array (convert Gemini-style "model" role → Claude "assistant")
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
   for (const h of options.history ?? []) {
@@ -85,14 +152,13 @@ async function bedrockGenerate(
   if (system) body.system = system;
 
   const url = `${BEDROCK_BASE}/model/${encodeURIComponent(modelId)}/invoke`;
+  const bodyStr = JSON.stringify(body);
+  const signedHeaders = await sigV4Headers(url, bodyStr, BEDROCK_REGION);
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-    },
-    body: JSON.stringify(body),
+    headers: signedHeaders,
+    body: bodyStr,
   });
 
   if (!resp.ok) {
