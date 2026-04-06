@@ -189,11 +189,20 @@ async function bedrockGenerate(
 
   const url = `${BEDROCK_BASE}/model/${encodeURIComponent(modelId)}/invoke`;
   const bodyStr = JSON.stringify(body);
-  const signedHeaders = await sigV4Headers(url, bodyStr, BEDROCK_REGION);
+
+  // Prefer Bearer token auth (Bedrock long-term API key) over SigV4 if key is available
+  const bedrockApiKey = process.env.BEDROCK_API_KEY;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (bedrockApiKey) {
+    headers["Authorization"] = `Bearer ${bedrockApiKey}`;
+  } else {
+    const sigHeaders = await sigV4Headers(url, bodyStr, BEDROCK_REGION);
+    Object.assign(headers, sigHeaders);
+  }
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: signedHeaders,
+    headers,
     body: bodyStr,
     signal: AbortSignal.timeout(options.timeoutMs ?? 25_000),
   });
