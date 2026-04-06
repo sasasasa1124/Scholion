@@ -1,6 +1,6 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from "next/server";
-import { getDB, isPg } from "@/lib/db";
+import { getDB, getNow } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
 import { DEFAULT_FACTCHECK_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
@@ -34,7 +34,7 @@ export async function POST(
 
   const pg = getDB();
   if (!pg) return NextResponse.json({ error: "DB not available" }, { status: 503 });
-  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  const now = getNow(pg);
 
   let row: QuestionRow | undefined;
   let hasFactCheckedAtCol = true;

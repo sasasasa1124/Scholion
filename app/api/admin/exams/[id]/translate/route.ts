@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDB, getQuestions, isPg } from "@/lib/db";
+import { getDB, getQuestions, getNow } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
 import { requireAdmin } from "@/lib/auth";
 import type { Choice } from "@/lib/types";
@@ -46,9 +46,7 @@ export async function POST(
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
-  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
-  if (false) {
-  }
+  const now = getNow(pg);
 
   const questions = await getQuestions(examId);
   if (questions.length === 0) {

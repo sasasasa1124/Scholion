@@ -1,7 +1,7 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from "next/server";
 import { getUserEmail } from "@/lib/user";
-import { getDB, isPg } from "@/lib/db";
+import { getDB, getNow } from "@/lib/db";
 
 
 
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
   if (appendTo) {
     // ── Append mode ────────────────────────────────────────────────────────
     if (!pg) return NextResponse.json({ error: "DB not available" }, { status: 500 });
-    const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+    const now = getNow(pg);
 
     const [examRow] = await pg<{ id: string; name: string; lang: string }[]>`SELECT id, name, lang FROM exams WHERE id = ${appendTo}`;
     if (!examRow) return NextResponse.json({ error: `Exam not found: ${appendTo}` }, { status: 404 });
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
   const uploaderEmail = await getUserEmail();
 
   if (pg) {
-    const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+    const now = getNow(pg);
     await pg`INSERT INTO exams (id, name, lang, created_by) VALUES (${examId}, ${displayName}, ${language}, ${uploaderEmail})
       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, lang = EXCLUDED.lang`;
 

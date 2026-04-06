@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDB, isPg } from "@/lib/db";
+import { getDB, getNow } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
 import { DEFAULT_FACTCHECK_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
@@ -35,7 +35,7 @@ export async function POST(
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
-  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  const now = getNow(pg);
 
   let allRows: QuestionRow[] | undefined;
   let hasFactCheckedAtCol = true;

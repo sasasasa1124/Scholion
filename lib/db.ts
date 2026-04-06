@@ -98,6 +98,11 @@ export function isPg(): boolean {
   return !!process.env.DATABASE_URL;
 }
 
+/** Returns the current-timestamp SQL expression for the active DB dialect. */
+export function getNow(pg: D1Client): UnsafeRaw {
+  return pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+}
+
 /** Returns a SQL template-tag client, or null in local dev. */
 export function getDB(): D1Client | null {
   if (isPg()) return buildPgClient();
@@ -326,7 +331,7 @@ export async function updateQuestion(id: string, data: QuestionUpdate, changedBy
     INSERT INTO question_history (question_id, question_text, options, answers, explanation, source, explanation_sources, version, changed_by, change_reason)
     VALUES (${id}, ${current.question_text}, ${current.options}, ${current.answers}, ${current.explanation}, ${current.source ?? ""}, ${current.explanation_sources ?? "[]"}, ${current.version}, ${changedBy}, ${data.change_reason})`;
 
-  const nowExpr = isPg() ? pg.unsafe("NOW()") : pg.unsafe("datetime('now')");
+  const nowExpr = getNow(pg);
   await pg`
     UPDATE questions
     SET question_text = ${data.question_text}, options = ${JSON.stringify(data.options)},
@@ -425,7 +430,7 @@ export async function createQuestion(examId: string, data: QuestionCreate, creat
   const num = (maxRow?.max_num ?? 0) + 1;
   const id = `${examId}__${num}`;
 
-  const nowFn = isPg() ? pg.unsafe("NOW()") : pg.unsafe("datetime('now')");
+  const nowFn = getNow(pg);
   await pg`
     INSERT INTO questions (id, exam_id, num, question_text, options, answers, explanation, source,
                            explanation_sources, created_by, created_at, added_at)

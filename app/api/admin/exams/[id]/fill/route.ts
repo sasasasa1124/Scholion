@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDB, isPg } from "@/lib/db";
+import { getDB, getNow } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
 import { DEFAULT_EXPLAIN_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
@@ -37,9 +37,7 @@ export async function POST(
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
-  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
-  if (false) {
-  }
+  const now = getNow(pg);
 
   const allQuestions = await pg<QuestionRow[]>`SELECT id, question_text, options, answers, explanation, category, filled_at FROM questions WHERE exam_id = ${examId} ORDER BY num ASC`;
 

@@ -13,7 +13,7 @@ export const runtime = 'edge';
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import type { Content, GenerateContentResponse } from "@google/genai";
-import { getDB, getSetting, isPg } from "@/lib/db";
+import { getDB, getSetting, getNow } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { parseAiJsonAs } from "@/lib/ai-json";
 import { FeedbackFixesSchema } from "@/lib/ai-schemas";
@@ -109,7 +109,7 @@ export async function POST(
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
-  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  const now = getNow(pg);
 
   // Fetch current questions from DB
   const rows = await pg<{

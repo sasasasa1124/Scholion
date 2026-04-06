@@ -1,6 +1,6 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from "next/server";
-import { getDB, isPg } from "@/lib/db";
+import { getDB, getNow } from "@/lib/db";
 import { DEFAULT_REFINE_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth";
@@ -31,7 +31,7 @@ export async function POST(
 
   const pg = getDB();
   if (!pg) return NextResponse.json({ error: "DB not available" }, { status: 503 });
-  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  const now = getNow(pg);
 
 
   const rows = await pg<QuestionRow[]>`SELECT id, question_text, options, answers FROM questions WHERE id = ${id}`;
