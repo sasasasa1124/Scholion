@@ -51,7 +51,8 @@ phases:
                 "GEMINI_API_KEY":    "arn:aws:secretsmanager:us-west-2:435788423370:secret:scholion/GEMINI_API_KEY-oPSvYM",
                 "CLERK_SECRET_KEY": "arn:aws:secretsmanager:us-west-2:435788423370:secret:scholion/CLERK_SECRET_KEY-wAgHm6",
                 "DATABASE_URL":     "arn:aws:secretsmanager:us-west-2:435788423370:secret:scholion/DATABASE_URL-9WFWE7",
-                "APP_GITHUB_TOKEN": "arn:aws:secretsmanager:us-west-2:435788423370:secret:scholion/GITHUB_TOKEN-lJwhXQ"
+                "APP_GITHUB_TOKEN": "arn:aws:secretsmanager:us-west-2:435788423370:secret:scholion/GITHUB_TOKEN-lJwhXQ",
+                "BEDROCK_API_KEY":  "arn:aws:secretsmanager:us-west-2:435788423370:secret:scholion/BEDROCK_API_KEY-VCVxi4"
               }
             },
             "ImageRepositoryType": "ECR"

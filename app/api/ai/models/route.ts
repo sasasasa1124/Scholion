@@ -1,8 +1,13 @@
 export const runtime = 'edge';
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { isAWS } from "@/lib/ai-client";
 
 export async function GET() {
+  if (isAWS) {
+    return NextResponse.json({ models: ["anthropic.claude-sonnet-4-6", "anthropic.claude-opus-4-6"] });
+  }
+
+  const { GoogleGenAI } = await import("@google/genai");
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });

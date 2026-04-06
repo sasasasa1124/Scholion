@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
   }
 
+  if (process.env.DEPLOY_TARGET === "aws") {
+    return NextResponse.json({ error: "TTS not available on AWS" }, { status: 503 });
+  }
+
   let text: string;
   try {
     const body = await req.json() as { text?: unknown };
