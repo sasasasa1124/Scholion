@@ -4,7 +4,7 @@ import { isAWS } from "@/lib/ai-client";
 
 export async function GET() {
   if (isAWS) {
-    return NextResponse.json({ models: ["anthropic.claude-sonnet-4-6", "anthropic.claude-opus-4-6"] });
+    return NextResponse.json({ models: ["us.anthropic.claude-sonnet-4-6", "us.anthropic.claude-opus-4-6-v1"] });
   }
 
   const { GoogleGenAI } = await import("@google/genai");
