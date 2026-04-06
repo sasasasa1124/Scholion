@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDB } from "@/lib/db";
+import { getDB, isPg } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
 import { DEFAULT_EXPLAIN_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
@@ -36,6 +36,9 @@ export async function POST(
   const pg = getDB();
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
+  }
+  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  if (false) {
   }
 
   const allQuestions = await pg<QuestionRow[]>`SELECT id, question_text, options, answers, explanation, category, filled_at FROM questions WHERE exam_id = ${examId} ORDER BY num ASC`;
@@ -114,7 +117,7 @@ Example: ["Core Mule Concepts", "DataWeave", "Anypoint Platform"]`;
 
             if (missing.length === 0 && !forceRefill) {
               // Nothing missing — just stamp filled_at and move on
-              await pg`UPDATE questions SET filled_at = NOW() WHERE id = ${q.id}`;
+              await pg`UPDATE questions SET filled_at = ${now} WHERE id = ${q.id}`;
               done++;
               send({ done, total, filled, skipped, failed });
               continue;
@@ -160,12 +163,12 @@ Example: ["Core Mule Concepts", "DataWeave", "Anypoint Platform"]`;
                     answers = COALESCE(${newAnswers}, answers),
                     explanation = COALESCE(${newExplanation}, explanation),
                     category = COALESCE(${newCategory}, category),
-                    filled_at = NOW(), updated_at = NOW()
+                    filled_at = ${now}, updated_at = ${now}
                   WHERE id = ${q.id}`;
                 filled++;
               } else {
                 // No fields changed but processed — stamp filled_at
-                await pg`UPDATE questions SET filled_at = NOW() WHERE id = ${q.id}`;
+                await pg`UPDATE questions SET filled_at = ${now} WHERE id = ${q.id}`;
               }
             }
           } catch { failed++; }

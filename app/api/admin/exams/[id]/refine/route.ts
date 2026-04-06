@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDB, getQuestions } from "@/lib/db";
+import { getDB, getQuestions, isPg } from "@/lib/db";
 import { DEFAULT_REFINE_PROMPT } from "@/lib/types";
 import type { Choice } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth";
@@ -24,6 +24,9 @@ export async function POST(
   const pg = getDB();
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
+  }
+  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  if (false) {
   }
 
   const questions = await getQuestions(examId);
@@ -81,7 +84,7 @@ export async function POST(
             });
 
             if (questionChanged || choicesChanged) {
-              await pg`UPDATE questions SET question_text = ${result.question}, options = ${JSON.stringify(result.choices)}, version = version + 1, updated_at = NOW() WHERE id = ${q.dbId}`;
+              await pg`UPDATE questions SET question_text = ${result.question}, options = ${JSON.stringify(result.choices)}, version = version + 1, updated_at = ${now} WHERE id = ${q.dbId}`;
               refined++;
             }
           } catch { failed++; }

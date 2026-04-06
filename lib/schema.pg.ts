@@ -2,7 +2,7 @@
  * Drizzle ORM schema for PostgreSQL (AWS RDS).
  * Mirrors lib/schema.ts but uses pgTable / serial instead of sqliteTable / integer autoIncrement.
  */
-import { pgTable, text, integer, real, serial, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, serial, bigint, primaryKey } from "drizzle-orm/pg-core";
 
 export const exams = pgTable("exams", {
   id: text("id").primaryKey(),
@@ -88,7 +88,7 @@ export const userSnapshots = pgTable("user_snapshots", {
   id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   examId: text("exam_id").notNull(),
-  ts: integer("ts").notNull(),
+  ts: bigint("ts", { mode: "number" }).notNull(),
   correct: integer("correct").notNull(),
   total: integer("total").notNull(),
   accuracy: real("accuracy").notNull(),

@@ -13,7 +13,7 @@ export const runtime = 'edge';
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import type { Content, GenerateContentResponse } from "@google/genai";
-import { getDB, getSetting } from "@/lib/db";
+import { getDB, getSetting, isPg } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { getUserEmail } from "@/lib/user";
 import { parseAiJson } from "@/lib/ai-json";
@@ -153,6 +153,7 @@ export async function POST(req: NextRequest) {
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
+  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
 
   const userEmail = await getUserEmail();
 
@@ -320,7 +321,7 @@ Include every question — do not truncate. Use the column mapping you just iden
             VALUES (
               ${qId}, ${examId}, ${q.num}, ${q.question},
               ${JSON.stringify(options)}, ${JSON.stringify(q.answer)},
-              ${q.explanation}, ${q.source}, ${"[]"}, ${userEmail}, NOW(), NOW()
+              ${q.explanation}, ${q.source}, ${"[]"}, ${userEmail}, ${now}, ${now}
             )
             ON CONFLICT (id) DO UPDATE SET
               question_text = EXCLUDED.question_text,

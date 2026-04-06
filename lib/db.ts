@@ -6,12 +6,9 @@ import type {
 import { DEFAULT_USER_SETTINGS } from "./types";
 import { getRequestContext } from "@cloudflare/next-on-pages";
 import { drizzle } from "drizzle-orm/d1";
-import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import { eq, like, and, sql, asc, desc, isNotNull, lte, lt, gte, inArray } from "drizzle-orm";
 import type { D1Database as CloudflareD1 } from "@cloudflare/workers-types";
 import * as schema from "./schema";
-import * as schemaPg from "./schema.pg";
 import {
   exams as examsTable, questions as questionsTable, questionHistory,
   scores, sessions, sessionAnswers, userSettings, userSnapshots,
@@ -54,12 +51,16 @@ function buildD1Client(d1: CloudflareD1): D1Client {
 // ── PostgreSQL adapter (wraps postgres.js with same template-tag API) ──────
 
 // Singleton postgres.js client — reuse across requests to avoid connection churn.
-let _pgSql: postgres.Sql | null = null;
-function getPgSql(): postgres.Sql {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _pgSql: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getPgSql(): any {
   if (!_pgSql) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pg = require("postgres") as (url: string, opts: object) => unknown;
     const url = process.env.DATABASE_URL!;
     const ssl = url.includes("rds.amazonaws.com") ? { rejectUnauthorized: false } : false;
-    _pgSql = postgres(url, { max: 10, idle_timeout: 20, ssl });
+    _pgSql = pg(url, { max: 10, idle_timeout: 20, ssl });
   }
   return _pgSql;
 }
@@ -93,7 +94,7 @@ function buildPgClient(): D1Client {
 // ── Database connection ────────────────────────────────────────────────────
 
 /** True when running on Node.js (AWS App Runner) with a PostgreSQL DATABASE_URL. */
-function isPg(): boolean {
+export function isPg(): boolean {
   return !!process.env.DATABASE_URL;
 }
 
@@ -114,6 +115,10 @@ export function getDB(): D1Client | null {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getDrizzle(): any {
   if (isPg()) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { drizzle: drizzlePg } = require("drizzle-orm/postgres-js") as typeof import("drizzle-orm/postgres-js");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const schemaPg = require("./schema.pg") as typeof import("./schema.pg");
     return drizzlePg(getPgSql(), { schema: schemaPg });
   }
   try {

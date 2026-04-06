@@ -13,7 +13,7 @@ export const runtime = 'edge';
 import { NextRequest } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import type { Content, GenerateContentResponse } from "@google/genai";
-import { getDB, getSetting } from "@/lib/db";
+import { getDB, getSetting, isPg } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { parseAiJsonAs } from "@/lib/ai-json";
 import { FeedbackFixesSchema } from "@/lib/ai-schemas";
@@ -109,6 +109,7 @@ export async function POST(
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
+  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
 
   // Fetch current questions from DB
   const rows = await pg<{
@@ -232,15 +233,15 @@ Use codeExecution to iterate through all questions and generate the fixes.`,
             // postgres.js doesn't allow dynamic column names in template literals,
             // so we branch per field name
             if (fix.field === "question_text") {
-              await pg`UPDATE questions SET question_text = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+              await pg`UPDATE questions SET question_text = ${fix.value}, updated_at = ${now} WHERE id = ${fix.id}`;
             } else if (fix.field === "options") {
-              await pg`UPDATE questions SET options = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+              await pg`UPDATE questions SET options = ${fix.value}, updated_at = ${now} WHERE id = ${fix.id}`;
             } else if (fix.field === "answers") {
-              await pg`UPDATE questions SET answers = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+              await pg`UPDATE questions SET answers = ${fix.value}, updated_at = ${now} WHERE id = ${fix.id}`;
             } else if (fix.field === "explanation") {
-              await pg`UPDATE questions SET explanation = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+              await pg`UPDATE questions SET explanation = ${fix.value}, updated_at = ${now} WHERE id = ${fix.id}`;
             } else if (fix.field === "source") {
-              await pg`UPDATE questions SET source = ${fix.value}, updated_at = NOW() WHERE id = ${fix.id}`;
+              await pg`UPDATE questions SET source = ${fix.value}, updated_at = ${now} WHERE id = ${fix.id}`;
             }
 
             fixed++;

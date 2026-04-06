@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDB, getQuestions } from "@/lib/db";
+import { getDB, getQuestions, isPg } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
 import { requireAdmin } from "@/lib/auth";
 import type { Choice } from "@/lib/types";
@@ -45,6 +45,9 @@ export async function POST(
   const pg = getDB();
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
+  }
+  const now = pg.unsafe(isPg() ? "NOW()" : "datetime('now')");
+  if (false) {
   }
 
   const questions = await getQuestions(examId);
@@ -168,11 +171,11 @@ ${batchJson}`;
             VALUES (${qId}, ${newExamId}, ${idx + 1}, ${tq.question}, ${JSON.stringify(tq.choices)},
                     ${JSON.stringify(questions[idx]?.answers ?? [])}, ${tq.explanation},
                     ${questions[idx]?.source ?? ""}, ${JSON.stringify(questions[idx]?.explanationSources ?? [])},
-                    ${tq.category ?? null}, NOW(), NOW())
+                    ${tq.category ?? null}, ${now}, ${now})
             ON CONFLICT (id) DO UPDATE SET
               question_text = EXCLUDED.question_text, options = EXCLUDED.options,
               answers = EXCLUDED.answers, explanation = EXCLUDED.explanation,
-              category = EXCLUDED.category, updated_at = NOW()`;
+              category = EXCLUDED.category, updated_at = ${now}`;
         }
 
         send({ done: total, total, newExamId });
