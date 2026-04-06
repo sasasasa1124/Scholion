@@ -2,7 +2,8 @@
 /**
  * Applies PostgreSQL migrations to RDS on container startup.
  * Only runs when DATABASE_URL is set (AWS/Node.js environment).
- * Uses IF NOT EXISTS so it is idempotent.
+ * Runs all *.sql files in migrations/drizzle/ in alphabetical order.
+ * Uses ON CONFLICT DO NOTHING / IF NOT EXISTS so it is idempotent.
  */
 
 const postgres = require("postgres");
@@ -16,26 +17,44 @@ async function migrate() {
     return;
   }
 
+  const migrationsDir = path.join(__dirname, "../migrations/drizzle");
+  const sqlFiles = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+
   console.log("[migrate] Connecting to PostgreSQL...");
-  const sql = postgres(url, { max: 1, connect_timeout: 30 });
+  const ssl = url.includes("rds.amazonaws.com") ? { rejectUnauthorized: false } : false;
+  const sql = postgres(url, { max: 1, connect_timeout: 30, ssl });
 
   try {
-    const migrationPath = path.join(
-      __dirname,
-      "../migrations/drizzle/0000_init_complete.sql"
-    );
-    const migrationSQL = fs.readFileSync(migrationPath, "utf8");
+    for (const file of sqlFiles) {
+      const filePath = path.join(migrationsDir, file);
+      console.log(`[migrate] Running ${file}...`);
+      const content = fs.readFileSync(filePath, "utf8");
 
-    const statements = migrationSQL
-      .split("--> statement-breakpoint")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith("--"));
+      // 0000_init_complete.sql uses --> statement-breakpoint separators
+      // 0001_seed_exams.sql is plain semicolon-terminated statements (one per line)
+      // Strip leading SQL comments from each statement before checking emptiness.
+      // A block may start with "-- comment\n\nCREATE TABLE..." — the CREATE TABLE must not be dropped.
+      const stripLeadingComments = (s) => s.replace(/^([ \t]*--[^\n]*\n)*/g, "").trim();
+      const statements = file.includes("init")
+        ? content
+            .split("--> statement-breakpoint")
+            .map((s) => stripLeadingComments(s))
+            .filter((s) => s.length > 0)
+        : content
+            .split("\n")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0 && !s.startsWith("--"));
 
-    console.log(`[migrate] Running ${statements.length} statements...`);
-    for (const stmt of statements) {
-      await sql.unsafe(stmt);
+      console.log(`[migrate]   ${statements.length} statements`);
+      for (const stmt of statements) {
+        await sql.unsafe(stmt);
+      }
+      console.log(`[migrate] ${file} done`);
     }
-    console.log("[migrate] Migrations applied successfully");
+    console.log("[migrate] All migrations applied successfully");
   } finally {
     await sql.end();
   }

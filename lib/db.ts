@@ -57,7 +57,9 @@ function buildD1Client(d1: CloudflareD1): D1Client {
 let _pgSql: postgres.Sql | null = null;
 function getPgSql(): postgres.Sql {
   if (!_pgSql) {
-    _pgSql = postgres(process.env.DATABASE_URL!, { max: 10, idle_timeout: 20 });
+    const url = process.env.DATABASE_URL!;
+    const ssl = url.includes("rds.amazonaws.com") ? { rejectUnauthorized: false } : false;
+    _pgSql = postgres(url, { max: 10, idle_timeout: 20, ssl });
   }
   return _pgSql;
 }
