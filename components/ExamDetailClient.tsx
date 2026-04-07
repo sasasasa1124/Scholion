@@ -148,7 +148,7 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
           if (evt.error) { fillError = true; setFillStatus("error"); return "error"; }
           if (evt.total !== undefined) setFillProgress({ done: (evt.done as number) ?? 0, total: evt.total as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
           if (evt.filled !== undefined) setFillResult({ filled: evt.filled as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
-          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total && evt.total > 0) return "done";
+          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total) return "done";
           return "continue";
         },
       );
@@ -193,7 +193,7 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
           if (evt.error) { refineError = true; setRefineStatus("error"); return "error"; }
           if (evt.total !== undefined) setRefineProgress({ done: (evt.done as number) ?? 0, total: evt.total as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
           if (evt.refined !== undefined) setRefineResult({ refined: evt.refined as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
-          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total && evt.total > 0) return "done";
+          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total) return "done";
           return "continue";
         },
       );
@@ -219,7 +219,7 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
           if (evt.error) { factError = true; setFactCheckStatus("error"); return "error"; }
           if (evt.total !== undefined) setFactCheckProgress({ done: (evt.done as number) ?? 0, total: evt.total as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
           if (evt.fixed !== undefined) setFactCheckResult({ fixed: evt.fixed as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
-          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total && evt.total > 0) return "done";
+          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total) return "done";
           return "continue";
         },
       );
