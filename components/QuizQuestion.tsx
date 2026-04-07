@@ -87,7 +87,7 @@ export default function QuizQuestion({
       </div>
 
       {/* Question text — capped height, scrollable if very long */}
-      <div className="bg-gray-50 rounded-xl px-5 py-4 lg:px-6 lg:py-5 mb-4 shrink-0 max-h-[40vh] overflow-y-auto border-l-4 border-scholion-300">
+      <div className="bg-gray-50 rounded-xl px-5 py-4 lg:px-6 lg:py-5 mb-4 shrink-0 max-h-[25vh] sm:max-h-[40vh] overflow-y-auto border-l-4 border-scholion-300">
         {context ? (
           <>
             <RichText
@@ -114,11 +114,11 @@ export default function QuizQuestion({
           />
         )}
         {question.source && (
-          <a href={question.source} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-300 hover:text-blue-400 mt-2 truncate block" title={question.source}>
+          <a href={question.source} target="_blank" rel="noopener noreferrer" className="hidden sm:block text-[10px] text-gray-300 hover:text-blue-400 mt-2 truncate" title={question.source}>
             Source: {question.source}
           </a>
         )}
-        <span className="text-[10px] text-gray-400 mt-1 block">
+        <span className="hidden sm:block text-[10px] text-gray-400 mt-1">
           {question.addedAt ? `Added ${new Date(question.addedAt).toLocaleDateString()}` : ""}
           {question.updatedAt && question.updatedAt !== question.addedAt && (
             <span className="text-sky-500"> · Updated {new Date(question.updatedAt).toLocaleDateString()}</span>
@@ -159,11 +159,11 @@ export default function QuizQuestion({
               key={choice.label}
               onClick={() => onToggle(choice.label)}
               disabled={submitted}
-              className={`w-full text-left border rounded-xl px-4 py-3 lg:px-5 lg:py-4 transition-all duration-150 active:scale-[0.97] ${ring} ${submitted ? "cursor-default option-reveal" : "cursor-pointer hover:shadow-sm"}`}
+              className={`w-full text-left border rounded-xl px-3 py-2.5 sm:px-4 sm:py-3 lg:px-5 lg:py-4 transition-all duration-150 active:scale-[0.97] ${ring} ${submitted ? "cursor-default option-reveal" : "cursor-pointer hover:shadow-sm"}`}
               style={submitted ? { animationDelay: `${i * 50}ms`, animationFillMode: "both" } : undefined}
             >
-              <div className="flex items-start gap-3">
-                <span className={`shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-lg border text-xs lg:text-sm font-bold flex items-center justify-center transition-all duration-150 ${badge}`}>
+              <div className="flex items-start gap-2 sm:gap-3">
+                <span className={`shrink-0 w-5 h-5 sm:w-6 sm:h-6 lg:w-7 lg:h-7 rounded-lg border text-[10px] sm:text-xs lg:text-sm font-bold flex items-center justify-center transition-all duration-150 ${badge}`}>
                   {choice.label}
                 </span>
                 <RichText text={choice.text} block className={`text-sm lg:text-base leading-relaxed pt-0.5 ${textColor}`} />

@@ -141,16 +141,17 @@ IMPORTANT: Write the explanation and reasoning fields in the same language as th
 
 export const DEFAULT_REFINE_PROMPT = `You are an expert editor for Salesforce/MuleSoft certification exam questions.
 Your tasks:
-1. Fix typos, grammatical errors, spelling mistakes, awkward phrasing, and missing line breaks (list bullets: - item, * item, 1. item, etc.).
-2. Add **bold** markers around the key terms that are critical for identifying the correct answer — specifically:
-   - The core action or decision being asked (e.g., "**which feature** should be used", "**what is the first step**")
-   - Technical terms or conditions that distinguish one choice from another (e.g., "**without sharing**", "**before save**")
-   - Important constraints or qualifiers (e.g., "**without writing code**", "**in a single transaction**")
-   Use **bold** sparingly — only on genuinely important distinguishing terms, not on every noun.
+
+Fix typos, grammatical errors, spelling mistakes, awkward phrasing, and missing line breaks (list bullets: - item, * item, 1. item, etc.).
+
+Add bold markers around the key terms in the question and ALL choices (both correct and incorrect) that are critical for identifying the correct answer or ruling out incorrect ones.
+   - In the question: Highlight the core action ("which feature should be used"), technical conditions ("without sharing"), and important constraints ("without writing code").
+   - In the choices: Highlight the specific terms, features, or parameters that make the choice correct, OR the fatal flaws/incorrect elements that make a choice wrong (e.g., highlighting "after save" when the context requires before save, or highlighting an incorrect feature name).
+   Use bold sparingly — only on genuinely important distinguishing terms, not on every noun.
 
 Do NOT change meaning, technical content, correct answers, or add/remove choices.
 Do NOT rewrite or rephrase if there is no error — preserve the original wording.
-Do NOT remove, alter, or reformat any image tags — preserve \`<img src="...">\` HTML tags and \`[img: ...]\` syntax exactly as they appear in the input.
+Do NOT remove, alter, or reformat any image tags — preserve <img src="..."> HTML tags and [img: ...] syntax exactly as they appear in the input.
 When searching, limit to official sources only (help.salesforce.com, developer.salesforce.com, trailhead.salesforce.com, docs.mulesoft.com).
 
 Question:
@@ -163,10 +164,14 @@ Currently recorded answer(s): {answers}
 
 Respond ONLY with a JSON object (no markdown, no code fences) with exactly these keys:
 { "question": "...", "choices": [{"label": "A", "text": "..."}], "changesSummary": "...", "highlights": ["phrase1", "phrase2"] }
-- question: the corrected question text with **bold** highlights (identical to input if no changes needed)
-- choices: array of corrected choices in the same order (identical to input if no changes needed)
-- changesSummary: a brief human-readable summary of what was changed, or empty string if nothing changed
-- highlights: up to 6 exact substrings from the (possibly refined) question text that are critical for a test-taker to correctly identify the correct answer(s). The recorded correct answer(s) are {answers} — use these to anchor your highlights to what actually makes those specific choices correct. Prioritize:
+
+question: the corrected question text with bold highlights
+
+choices: array of corrected choices in the same order, with bold highlights added to the critical terms that prove each choice right or wrong
+
+changesSummary: a brief human-readable summary of what was changed, or empty string if nothing changed
+
+highlights: up to 6 exact substrings from the (possibly refined) question text that are critical for a test-taker to correctly identify the correct answer(s). The recorded correct answer(s) are {answers} — use these to anchor your highlights to what actually makes those specific choices correct. Prioritize:
   (a) constraint words or qualifying conditions that rule out wrong answers (e.g. "without writing code", "before save", "in a single transaction")
   (b) technical terms or feature names that the correct answer(s) uniquely depend on
   (c) the core decision clause of the question (e.g. "which feature should be used", "what is the first step")

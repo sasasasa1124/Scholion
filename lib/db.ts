@@ -626,19 +626,21 @@ export async function getDailyProgress(userEmail: string): Promise<{
   if (!pg) return { todayCount: 0, activeDays: [] };
 
   const todayFilter = isPg()
-    ? pg.unsafe("started_at::date = CURRENT_DATE")
-    : pg.unsafe("date(started_at) = date('now')");
+    ? pg.unsafe("updated_at::date = CURRENT_DATE")
+    : pg.unsafe("date(updated_at) = date('now')");
   const dateFn = isPg()
-    ? pg.unsafe("started_at::date")
-    : pg.unsafe("date(started_at)");
+    ? pg.unsafe("updated_at::date")
+    : pg.unsafe("date(updated_at)");
 
+  // Count actual answers submitted (each row in scores = one answered question)
   const [todayRow] = await pg<{ cnt: number }[]>`
-    SELECT COALESCE(SUM(question_count), 0) AS cnt
-    FROM sessions WHERE user_email = ${userEmail} AND ${todayFilter}`;
+    SELECT COUNT(*) AS cnt
+    FROM scores WHERE user_email = ${userEmail} AND ${todayFilter}`;
 
+  // Get distinct days user answered questions (not session start dates)
   const dayRows = await pg<{ day: string }[]>`
     SELECT DISTINCT ${dateFn} AS day
-    FROM sessions WHERE user_email = ${userEmail}
+    FROM scores WHERE user_email = ${userEmail}
     ORDER BY day DESC LIMIT 90`;
 
   return {

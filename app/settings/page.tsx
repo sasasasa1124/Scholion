@@ -10,7 +10,7 @@ import { useSetHeader } from "@/lib/header-context";
 import type { PromptVersion } from "@/lib/types";
 import { DEFAULT_EXPLAIN_PROMPT, DEFAULT_REFINE_PROMPT, DEFAULT_STUDY_GUIDE_PROMPT, DEFAULT_FACTCHECK_PROMPT } from "@/lib/types";
 
-type PromptKey = "explain" | "refine" | "studyguide" | "fill" | "factcheck";
+type PromptKey = "explain" | "refine" | "studyguide" | "factcheck";
 
 interface PromptConfig {
   key: PromptKey;
