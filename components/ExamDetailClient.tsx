@@ -32,6 +32,47 @@ function pctTextColor(pct: number) {
   return "text-rose-500";
 }
 
+/**
+ * Runs a batch SSE endpoint with automatic retry on disconnect.
+ * The backend skips already-processed rows (idempotent), so re-POSTing resumes from where it left off.
+ * Calls onEvent for each SSE data event. Retries until isComplete() returns true or onEvent signals error.
+ */
+async function runBatchWithRetry(
+  url: string,
+  body: object,
+  onEvent: (evt: Record<string, unknown>) => "continue" | "done" | "error",
+): Promise<void> {
+  let complete = false;
+  while (!complete) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.body) break;
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() ?? "";
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          const evt = JSON.parse(part.slice(6)) as Record<string, unknown>;
+          const signal = onEvent(evt);
+          if (signal === "done") { complete = true; break outer; }
+          if (signal === "error") { complete = true; break outer; }
+        }
+      }
+    } catch { /* network error — will retry */ }
+    if (!complete) await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
 export default function ExamDetailClient({ exam, categoryStats: initialStats, userEmail }: Props) {
   const { settings, t } = useSettings();
   const { fetchAudio } = useAudio();
@@ -84,8 +125,8 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
 
   // Wording Fix (bulk refine)
   const [refineStatus, setRefineStatus] = useState<"idle" | "running" | "done" | "error">("idle");
-  const [refineProgress, setRefineProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
-  const [refineResult, setRefineResult] = useState<{ refined: number; failed: number } | null>(null);
+  const [refineProgress, setRefineProgress] = useState<{ done: number; total: number; skipped: number; failed: number } | null>(null);
+  const [refineResult, setRefineResult] = useState<{ refined: number; skipped: number; failed: number } | null>(null);
 
   // Fact Check (bulk)
   const [factCheckStatus, setFactCheckStatus] = useState<"idle" | "running" | "done" | "error">("idle");
@@ -99,29 +140,19 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
     setFillResult(null);
     setTtsProgress(null);
     try {
-      const res = await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}/fill`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userPrompt: settings.aiPrompt, forceRefill: fillForce }),
-      });
-      if (!res.body) { setFillStatus("error"); return; }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop() ?? "";
-        for (const part of parts) {
-          if (!part.startsWith("data: ")) continue;
-          const evt = JSON.parse(part.slice(6)) as { error?: string; done?: number; total?: number; filled?: number; skipped?: number; failed?: number };
-          if (evt.error) { setFillStatus("error"); return; }
-          if (evt.total !== undefined) setFillProgress({ done: evt.done ?? 0, total: evt.total, skipped: evt.skipped ?? 0, failed: evt.failed ?? 0 });
-          if (evt.filled !== undefined) setFillResult({ filled: evt.filled, skipped: evt.skipped ?? 0, failed: evt.failed ?? 0 });
-        }
-      }
+      let fillError = false;
+      await runBatchWithRetry(
+        `/api/admin/exams/${encodeURIComponent(exam.id)}/fill`,
+        { userPrompt: settings.aiPrompt, forceRefill: fillForce },
+        (evt) => {
+          if (evt.error) { fillError = true; setFillStatus("error"); return "error"; }
+          if (evt.total !== undefined) setFillProgress({ done: (evt.done as number) ?? 0, total: evt.total as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
+          if (evt.filled !== undefined) setFillResult({ filled: evt.filled as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
+          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total && evt.total > 0) return "done";
+          return "continue";
+        },
+      );
+      if (fillError) { setTimeout(() => setFillStatus("idle"), 3000); return; }
       setFillStatus("done");
 
       // Optionally pre-generate TTS for all questions
@@ -154,29 +185,19 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
     setRefineProgress(null);
     setRefineResult(null);
     try {
-      const res = await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}/refine`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userPrompt: settings.aiRefinePrompt }),
-      });
-      if (!res.body) { setRefineStatus("error"); return; }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop() ?? "";
-        for (const part of parts) {
-          if (!part.startsWith("data: ")) continue;
-          const evt = JSON.parse(part.slice(6)) as { error?: string; done?: number; total?: number; refined?: number; failed?: number };
-          if (evt.error) { setRefineStatus("error"); return; }
-          if (evt.total !== undefined) setRefineProgress({ done: evt.done ?? 0, total: evt.total, failed: evt.failed ?? 0 });
-          if (evt.refined !== undefined) setRefineResult({ refined: evt.refined, failed: evt.failed ?? 0 });
-        }
-      }
+      let refineError = false;
+      await runBatchWithRetry(
+        `/api/admin/exams/${encodeURIComponent(exam.id)}/refine`,
+        { userPrompt: settings.aiRefinePrompt },
+        (evt) => {
+          if (evt.error) { refineError = true; setRefineStatus("error"); return "error"; }
+          if (evt.total !== undefined) setRefineProgress({ done: (evt.done as number) ?? 0, total: evt.total as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
+          if (evt.refined !== undefined) setRefineResult({ refined: evt.refined as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
+          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total && evt.total > 0) return "done";
+          return "continue";
+        },
+      );
+      if (refineError) { setTimeout(() => setRefineStatus("idle"), 3000); return; }
       setRefineStatus("done");
       setTimeout(() => { setRefineStatus("idle"); setRefineResult(null); }, 4000);
     } catch {
@@ -190,29 +211,19 @@ export default function ExamDetailClient({ exam, categoryStats: initialStats, us
     setFactCheckProgress(null);
     setFactCheckResult(null);
     try {
-      const res = await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}/factcheck`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userPrompt: settings.aiFactCheckPrompt, forceRecheck: factCheckForce }),
-      });
-      if (!res.body) { setFactCheckStatus("error"); return; }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop() ?? "";
-        for (const part of parts) {
-          if (!part.startsWith("data: ")) continue;
-          const evt = JSON.parse(part.slice(6)) as { error?: string; done?: number; total?: number; fixed?: number; skipped?: number; failed?: number };
-          if (evt.error) { setFactCheckStatus("error"); return; }
-          if (evt.total !== undefined) setFactCheckProgress({ done: evt.done ?? 0, total: evt.total, skipped: evt.skipped ?? 0, failed: evt.failed ?? 0 });
-          if (evt.fixed !== undefined) setFactCheckResult({ fixed: evt.fixed, skipped: evt.skipped ?? 0, failed: evt.failed ?? 0 });
-        }
-      }
+      let factError = false;
+      await runBatchWithRetry(
+        `/api/admin/exams/${encodeURIComponent(exam.id)}/factcheck`,
+        { userPrompt: settings.aiFactCheckPrompt, forceRecheck: factCheckForce },
+        (evt) => {
+          if (evt.error) { factError = true; setFactCheckStatus("error"); return "error"; }
+          if (evt.total !== undefined) setFactCheckProgress({ done: (evt.done as number) ?? 0, total: evt.total as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
+          if (evt.fixed !== undefined) setFactCheckResult({ fixed: evt.fixed as number, skipped: (evt.skipped as number) ?? 0, failed: (evt.failed as number) ?? 0 });
+          if (typeof evt.done === "number" && typeof evt.total === "number" && evt.done === evt.total && evt.total > 0) return "done";
+          return "continue";
+        },
+      );
+      if (factError) { setTimeout(() => setFactCheckStatus("idle"), 3000); return; }
       setFactCheckStatus("done");
       setTimeout(() => { setFactCheckStatus("idle"); setFactCheckResult(null); }, 4000);
     } catch {

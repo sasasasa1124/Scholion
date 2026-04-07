@@ -1,0 +1,1 @@
+ALTER TABLE questions ADD COLUMN refined_at TEXT DEFAULT NULL;
