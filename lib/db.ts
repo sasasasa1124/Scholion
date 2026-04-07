@@ -20,7 +20,7 @@ import {
 
 class UnsafeRaw { constructor(public readonly sql: string) {} }
 
-type D1Client = {
+export type D1Client = {
   <T>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   unsafe: (s: string) => UnsafeRaw;
 };

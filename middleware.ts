@@ -22,8 +22,11 @@ export async function middleware(req: NextRequest) {
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
+  const isApi = pathname.startsWith("/api/");
+
   const token = req.cookies.get("id_token")?.value;
   if (!token) {
+    if (isApi) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
@@ -31,6 +34,7 @@ export async function middleware(req: NextRequest) {
 
   const email = decodeTokenEmail(token);
   if (!email) {
+    if (isApi) return NextResponse.json({ error: "Session expired" }, { status: 401 });
     const response = NextResponse.redirect(new URL("/login", req.url));
     response.cookies.delete("id_token");
     response.cookies.delete("user_email");
@@ -38,6 +42,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!email.endsWith("@salesforce.com")) {
+    if (isApi) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     return NextResponse.redirect(new URL("/unauthorized", req.url));
   }
 
