@@ -13,7 +13,7 @@ export const isAWS = process.env.DEPLOY_TARGET === "aws";
 
 // Default models
 const DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-6";
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-preview";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
 const BEDROCK_REGION = "us-west-2";
 const BEDROCK_BASE = `https://bedrock-runtime.${BEDROCK_REGION}.amazonaws.com`;
