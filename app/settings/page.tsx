@@ -289,8 +289,19 @@ function SettingsInner() {
   const [modelList, setModelList] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
+  const [deployTarget, setDeployTarget] = useState<"aws" | "cloudflare">("cloudflare");
   const modelBeforeFocus = useRef<string>("");
   const ttsModelBeforeFocus = useRef<string>("");
+
+  // Fetch deployment target on mount
+  useEffect(() => {
+    fetch("/api/app-settings")
+      .then((r) => r.json() as Promise<{ deployTarget?: string }>)
+      .then(({ deployTarget: dt }) => {
+        if (dt === "aws" || dt === "cloudflare") setDeployTarget(dt);
+      })
+      .catch(() => {});
+  }, []);
 
   // Sync local state when settings load from localStorage
   useEffect(() => {
@@ -465,7 +476,7 @@ function SettingsInner() {
             <BrainCircuit size={11} className="text-blue-400" />
             AI Model
           </h2>
-          <p className="text-xs text-gray-400 mb-3">Gemini model used for Explain and Refine</p>
+          <p className="text-xs text-gray-400 mb-3">{deployTarget === "aws" ? "Claude model" : "Gemini model"} used for Explain and Refine</p>
           <div className="flex gap-2 items-center">
             <input
               list="gemini-model-list"
@@ -474,7 +485,7 @@ function SettingsInner() {
               onFocus={() => { modelBeforeFocus.current = geminiModel; setGeminiModel(""); }}
               onBlur={() => { if (!geminiModel) setGeminiModel(modelBeforeFocus.current); }}
               className="flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-              placeholder="gemini-2.5-flash"
+              placeholder={deployTarget === "aws" ? "claude-sonnet-4-6" : "gemini-2.5-flash"}
             />
             <button
               type="button"
@@ -565,7 +576,7 @@ function SettingsInner() {
             </div>
             {/* TTS Model */}
             <div className="px-4 py-3.5">
-              <p className="text-xs text-gray-400 mb-2">TTS Model</p>
+              <p className="text-xs text-gray-400 mb-2">TTS Voice {deployTarget === "aws" ? "(Polly)" : "(Gemini)"}</p>
               <input
                 list="tts-model-list"
                 value={ttsModel}
@@ -573,11 +584,23 @@ function SettingsInner() {
                 onFocus={() => { ttsModelBeforeFocus.current = ttsModel; setTtsModel(""); }}
                 onBlur={() => { if (!ttsModel) setTtsModel(ttsModelBeforeFocus.current); }}
                 className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                placeholder="gemini-2.5-flash-preview-tts"
+                placeholder={deployTarget === "aws" ? "Ruth" : "gemini-2.5-flash-preview-tts"}
               />
               <datalist id="tts-model-list">
-                <option value="gemini-2.5-flash-preview-tts" />
-                <option value="gemini-2.5-pro-preview-tts" />
+                {deployTarget === "aws" ? (
+                  <>
+                    <option value="Ruth" />
+                    <option value="Kazuha" />
+                    <option value="Joanna" />
+                    <option value="Matthew" />
+                    <option value="Salli" />
+                  </>
+                ) : (
+                  <>
+                    <option value="gemini-2.5-flash-preview-tts" />
+                    <option value="gemini-2.5-pro-preview-tts" />
+                  </>
+                )}
               </datalist>
             </div>
             {/* Pre-load audio slider */}
