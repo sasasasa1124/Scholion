@@ -3,12 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/db";
 
 const DEFAULTS: Record<string, string> = {
-  gemini_model: "gemini-3-flash-preview",
+  gemini_model: "gemini-2.5-flash",
 };
 
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
-  if (!key) return NextResponse.json({ error: "key required" }, { status: 400 });
+
+  // Return deployment target with app settings
+  if (!key) {
+    return NextResponse.json({
+      deployTarget: process.env.DEPLOY_TARGET ?? "cloudflare",
+    });
+  }
+
   const value = (await getSetting(key)) ?? DEFAULTS[key] ?? null;
   return NextResponse.json({ value });
 }
