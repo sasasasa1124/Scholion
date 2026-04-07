@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { PollyClient, SynthesizeSpeechCommand, OutputFormat, Engine, VoiceId } from "@aws-sdk/client-polly";
 import { getEnv } from "@/lib/env";
 import { getTtsCacheEntry, setTtsCacheEntry } from "@/lib/db";
 
@@ -16,13 +15,17 @@ const GEMINI_TTS_VOICE = "Aoede";
 const POLLY_VOICE_ID = "Ruth"; // English default; can be overridden
 
 async function synthesizeWithPolly(text: string, voiceId: string = POLLY_VOICE_ID): Promise<Uint8Array> {
+  // Lazy load Polly SDK (only on AWS)
+  const { PollyClient, SynthesizeSpeechCommand, OutputFormat, Engine } = await import("@aws-sdk/client-polly");
+  type VoiceIdType = import("@aws-sdk/client-polly").VoiceId;
+
   const client = new PollyClient({ region: process.env.AWS_REGION || "us-west-2" });
 
   try {
     const command = new SynthesizeSpeechCommand({
       Text: text,
       OutputFormat: OutputFormat.MP3,
-      VoiceId: voiceId as VoiceId,
+      VoiceId: voiceId as VoiceIdType,
       Engine: Engine.GENERATIVE, // Use generative engine for higher quality
     });
 
