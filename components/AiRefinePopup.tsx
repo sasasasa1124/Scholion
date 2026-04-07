@@ -106,6 +106,21 @@ export default function AiRefinePopup({
     : [];
   const hasChanges = questionChanged || changedChoices.length > 0;
 
+  // Handle Enter key (Cmd/Ctrl+Enter) to adopt refinement
+  useEffect(() => {
+    if (!result || adopting || !hasChanges || editMode) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onAdopt({ question: editedQuestion, choices: editedChoices });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [result, adopting, hasChanges, editMode, editedQuestion, editedChoices, onAdopt]);
+
   return (
     <div className="fixed bottom-20 right-4 sm:right-8 z-60 w-80 sm:w-[26rem] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
       {/* Header */}
