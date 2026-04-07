@@ -89,15 +89,14 @@ This repository is worked on by **multiple AI agent teams in parallel** (e.g., C
 - **Branch strategy**: Never work directly on `main`. Always create a feature branch (`feat/xxx`, `fix/xxx`).
 - **Deploy branches**: Deployment is triggered by pushing `main` to a deploy branch — never commit directly to these branches:
   - `deploy/cloudflare` → GitHub Actions deploys to Cloudflare Pages
-  - `deploy/gcp` → GitHub Actions deploys to GCP Cloud Run
+  - `deploy/aws` → GitHub Actions deploys to AWS App Runner
   ```bash
   git push origin main:deploy/cloudflare   # deploy to Cloudflare
-  git push origin main:deploy/gcp          # deploy to GCP
+  git push origin main:deploy/aws          # deploy to AWS
   ```
 - **Deployment verification**: After pushing, confirm the GitHub Actions workflow completes successfully. Check deployment status before declaring the work done.
 - **Cloudflare commit messages**: Cloudflare Pages API rejects non-ASCII characters in commit messages (error code 8000111). Keep commit messages in English/ASCII only.
-- **D1 migrations**: Production migrations are applied via `npm run db:migrate`. Verify the migration ran on production after deployment.
-- **GCP details**: See [GCP-Project.md](./GCP-Project.md) for full GCP resource list, CLI setup steps, and code changes required for migration.
+- **AWS deployments**: Ensure `DEPLOY_TARGET=aws` environment variable is set in AWS App Runner. Settings UI will adapt to show AWS-specific labels (Claude model, Polly voices).
 
 ## Debugging and Bug Fix Protocol
 
