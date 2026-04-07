@@ -180,9 +180,13 @@ async function bedrockGenerate(
 
   const modelId = options.model ?? process.env.BEDROCK_MODEL ?? DEFAULT_BEDROCK_MODEL;
 
+  // For batch jobs (fill/refine/factcheck), use lower token limit for speed
+  // JSON responses need more tokens; others can use less
+  const maxTokens = options.jsonMode ? 4096 : 2048;
+
   const body: Record<string, unknown> = {
     anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 8192,
+    max_tokens: maxTokens,
     messages,
   };
   if (system) body.system = system;
