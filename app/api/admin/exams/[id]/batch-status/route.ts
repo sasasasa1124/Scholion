@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from "next/server";
 import { getDB } from "@/lib/db";
 import { getBatchJob, getActiveJob, type JobType } from "@/lib/batch-job";

@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from "next/server";
 import { getDB, getNow } from "@/lib/db";
 import { DEFAULT_REFINE_PROMPT } from "@/lib/types";

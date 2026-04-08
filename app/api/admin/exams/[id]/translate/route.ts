@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest } from "next/server";
 import { getDB, getQuestions, getNow } from "@/lib/db";
 import { aiGenerate } from "@/lib/ai-client";
