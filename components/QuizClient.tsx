@@ -421,13 +421,12 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const doCompleteSession = useCallback(() => {
     if (sessionCompletedRef.current) return;
     sessionCompletedRef.current = true;
-    navigator.sendBeacon(
-      `/api/sessions/${sessionId}`,
-      new Blob(
-        [JSON.stringify({ correctCount: sessionCorrectCount })],
-        { type: "application/json" }
-      )
-    );
+    fetch(`/api/sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ correctCount: sessionCorrectCount }),
+      keepalive: true,
+    }).catch(() => {});
   }, [sessionId, sessionCorrectCount]);
 
   // Complete session on tab close / refresh

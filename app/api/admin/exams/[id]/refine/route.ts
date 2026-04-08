@@ -24,20 +24,26 @@ export async function POST(
     forceRefine = body.forceRefine ?? false;
   } catch { /* no body is fine */ }
 
-  const jobId = await createBatchJob(pg, examId, "refine", { userPrompt, forceRefine });
-  const task = runRefineJob(pg, jobId, examId, { userPrompt, forceRefine });
+  try {
+    const jobId = await createBatchJob(pg, examId, "refine", { userPrompt, forceRefine });
+    const task = runRefineJob(pg, jobId, examId, { userPrompt, forceRefine });
 
-  if (isAWS) {
-    void task;
-  } else {
-    try {
-      const { getRequestContext } = await import("@cloudflare/next-on-pages");
-      const { ctx } = getRequestContext() as unknown as { ctx: { waitUntil: (p: Promise<void>) => void } };
-      ctx.waitUntil(task);
-    } catch {
+    if (isAWS) {
       void task;
+    } else {
+      try {
+        const { getRequestContext } = await import("@cloudflare/next-on-pages");
+        const { ctx } = getRequestContext() as unknown as { ctx: { waitUntil: (p: Promise<void>) => void } };
+        ctx.waitUntil(task);
+      } catch {
+        void task;
+      }
     }
-  }
 
-  return NextResponse.json({ jobId });
+    return NextResponse.json({ jobId });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[refine] error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
