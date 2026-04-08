@@ -63,7 +63,20 @@ async function migrate() {
 
       console.log(`[migrate]   ${statements.length} statements`);
       for (const stmt of statements) {
-        await sql.unsafe(stmt);
+        try {
+          await sql.unsafe(stmt);
+        } catch (e) {
+          // Tolerate already-applied incremental migrations:
+          //   42701 = duplicate_column (ALTER TABLE ADD COLUMN already exists)
+          //   42P07 = duplicate_table  (CREATE TABLE already exists, non-IF-NOT-EXISTS)
+          //   42710 = duplicate_object (CREATE INDEX already exists, non-IF-NOT-EXISTS)
+          const code = e.code ?? "";
+          if (code === "42701" || code === "42P07" || code === "42710") {
+            console.log(`[migrate]   skipped (already applied): ${e.message.split("\n")[0]}`);
+          } else {
+            throw e;
+          }
+        }
       }
       console.log(`[migrate] ${file} done`);
     }

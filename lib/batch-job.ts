@@ -35,9 +35,27 @@ export interface BatchJobRow {
 
 // ── DB helpers ──────────────────────────────────────────────────────────────
 
+// Safety net: auto-create batch_jobs in D1 if migration 0021 was not applied via wrangler.
+// Only runs once per Worker isolate lifetime; no-op on PostgreSQL (uses migrate-pg.js).
+let d1TableEnsured = false;
+async function ensureD1Table(pg: D1Client) {
+  if (isPg() || d1TableEnsured) return;
+  await pg`CREATE TABLE IF NOT EXISTS batch_jobs (
+    id TEXT PRIMARY KEY, exam_id TEXT NOT NULL, job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', done INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0,
+    result_count INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0,
+    error_msg TEXT, params TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`;
+  await pg`CREATE INDEX IF NOT EXISTS idx_batch_jobs_exam_id ON batch_jobs(exam_id)`;
+  d1TableEnsured = true;
+}
+
 export async function createBatchJob(
   pg: D1Client, examId: string, jobType: JobType, params: Record<string, unknown>,
 ): Promise<string> {
+  await ensureD1Table(pg);
   const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const now = getNow(pg);
   await pg`INSERT INTO batch_jobs (id, exam_id, job_type, status, params, created_at, updated_at)
