@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Plus, Loader2, Bot, User, Trash2, Check } from "lucide-react";
 import type { Choice, Suggestion } from "@/lib/types";
 import { useSettings } from "@/lib/settings-context";
@@ -12,6 +13,7 @@ interface Props {
 
 export default function SuggestPanel({ questionId, choices }: Props) {
   const { t } = useSettings();
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -97,6 +99,7 @@ export default function SuggestPanel({ questionId, choices }: Props) {
     setTimeout(() => setSuccessMsg(""), 3000);
     setSuggestions((prev) => prev?.filter((s) => s.id !== id) ?? null);
     setCount((c) => (c !== null ? c - 1 : null));
+    router.refresh();
   };
 
   return (
@@ -168,6 +171,12 @@ export default function SuggestPanel({ questionId, choices }: Props) {
                 <textarea
                   value={formExplanation}
                   onChange={(e) => setFormExplanation(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { // Ctrl/Cmd+Enter to submit
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
                   rows={3}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
@@ -179,6 +188,12 @@ export default function SuggestPanel({ questionId, choices }: Props) {
                   type="text"
                   value={formComment}
                   onChange={(e) => setFormComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
                   placeholder={t("suggestComment")}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
