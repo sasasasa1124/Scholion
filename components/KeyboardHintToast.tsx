@@ -53,6 +53,8 @@ export default function KeyboardHintToast() {
               ["Enter / →", "Submit / Next"],
               ["←", "Prev question"],
               ["⌫", "Don't Know (review)"],
+              ["W", "Force wrong + next"],
+              ["X", "Toggle invalidate"],
             ] as [string, string][]).map(([key, label]) => (
               <tr key={key}>
                 <td className="py-0.5 pr-2">

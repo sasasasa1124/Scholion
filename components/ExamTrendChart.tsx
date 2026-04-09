@@ -2,7 +2,7 @@
 
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, Customized,
 } from "recharts";
 import type { ExamSnapshot } from "@/lib/types";
 
@@ -10,10 +10,15 @@ interface Props {
   snapshots: ExamSnapshot[];
 }
 
+const RECENT_SESSIONS = 10;
+
 export default function ExamTrendChart({ snapshots }: Props) {
-  const data = snapshots.slice(-30).map((s) => ({
+  const sliced = snapshots.slice(-30);
+  const recentStart = Math.max(0, sliced.length - RECENT_SESSIONS);
+  const data = sliced.map((s, i) => ({
     label: new Date(s.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     accuracy: s.accuracy,
+    recent: i >= recentStart,
   }));
 
   if (data.length === 0) {
@@ -24,9 +29,19 @@ export default function ExamTrendChart({ snapshots }: Props) {
     );
   }
 
+  const boundary = data.length > 1 ? `${(recentStart / (data.length - 1)) * 100}%` : "100%";
+
   return (
     <ResponsiveContainer width="100%" height={110}>
       <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -28 }}>
+        <Customized component={() => (
+          <defs>
+            <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset={boundary} stopColor="#7c3aed" stopOpacity={0.3} />
+              <stop offset={boundary} stopColor="#7c3aed" stopOpacity={1} />
+            </linearGradient>
+          </defs>
+        )} />
         <XAxis
           dataKey="label"
           tick={{ fontSize: 9, fill: "#9ca3af" }}
@@ -50,9 +65,24 @@ export default function ExamTrendChart({ snapshots }: Props) {
         <Line
           type="monotone"
           dataKey="accuracy"
-          stroke="#7c3aed"
+          stroke="url(#lineGrad)"
           strokeWidth={2}
-          dot={{ r: 2.5, fill: "#7c3aed", strokeWidth: 0 }}
+          dot={(props: { cx?: number; cy?: number; index?: number }) => {
+            const { cx, cy, index } = props;
+            if (cx == null || cy == null || index == null) return <></>;
+            const isRecent = data[index]?.recent;
+            return (
+              <circle
+                key={index}
+                cx={cx}
+                cy={cy}
+                r={2.5}
+                fill="#7c3aed"
+                opacity={isRecent ? 1 : 0.3}
+                stroke="none"
+              />
+            );
+          }}
           activeDot={{ r: 4, fill: "#7c3aed" }}
         />
       </LineChart>

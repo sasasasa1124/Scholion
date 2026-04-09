@@ -89,6 +89,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   const [shakeKey, setShakeKey] = useState(0);
   const [sessionId] = useState<string>(() => crypto.randomUUID());
   const [sessionCorrectCount, setSessionCorrectCount] = useState(0);
+  const [sessionTotal, setSessionTotal] = useState(0);
   const [filterResetToast, setFilterResetToast] = useState(false);
   const sessionCompletedRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
@@ -271,10 +272,8 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, examId]);
 
-  const totalAnswered = questions.filter((q) => stats[String(q.id)] !== undefined).length;
-  const totalCorrect = questions.filter((q) => stats[String(q.id)] === 1).length;
-  const overallRate = totalAnswered > 0 ? Math.round((totalCorrect / questions.length) * 100) : null;
   const wrongCount = questions.filter((q) => stats[String(q.id)] === 0).length;
+  const sessionRate = sessionTotal > 0 ? Math.round((sessionCorrectCount / sessionTotal) * 100) : null;
 
   const continueIndex = savedLastQuestionId !== null
     ? questions.findIndex((q) => q.id === savedLastQuestionId)
@@ -355,6 +354,7 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
       return next;
     });
     if (correct) setSessionCorrectCount((c) => c + 1);
+    setSessionTotal((c) => c + 1);
     // Fire-and-forget sync to DB
     fetch("/api/scores", {
       method: "POST",
@@ -538,13 +538,19 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
       }
       const letter = e.key.toUpperCase();
       if (labels.includes(letter)) { handleToggle(letter); return; }
-      if (e.key === "Enter")      { submitted ? goNext() : handleSubmit(); }
-      if (e.key === "ArrowRight") goNext();
-      if (e.key === "ArrowLeft")  goPrev();
+      if (e.key === "Enter")      { submitted ? goNext() : handleSubmit(); return; }
+      if (e.key === "ArrowRight") { goNext(); return; }
+      if (e.key === "ArrowLeft")  { goPrev(); return; }
+      if (letter === "W" && !submitted) {
+        const q = filteredQuestions[currentIndex];
+        if (q) { recordAnswer(q.id, false, q.dbId); setSubmitted(true); setIsCorrect(false); setShakeKey((k) => k + 1); }
+        return;
+      }
+      if (letter === "X") { handleToggleInvalidate(); return; }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, aiPopupOpen, refinePopupOpen, factCheckPopupOpen, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext]);
+  }, [filteredQuestions, currentIndex, submitted, revealed, mode, editingQuestion, aiPopupOpen, refinePopupOpen, factCheckPopupOpen, handleToggle, handleSubmit, goNext, goPrev, handleKnow, handleDontKnow, handleRevealNext, recordAnswer, handleToggleInvalidate]);
 
   const isLast = currentIndex === filteredQuestions.length - 1;
   const sliderPct = filteredQuestions.length > 1
@@ -621,9 +627,9 @@ export default function QuizClient({ questions: initialQuestions, examId, examNa
         onBack={() => { doCompleteSession(); router.push(backHref); }}
         onHome={() => { doCompleteSession(); router.push("/"); }}
         settingsHref={`/settings?returnTo=${encodeURIComponent(`/quiz/${examId}?mode=${mode}&filter=${filter}&startId=${filteredQuestions[currentIndex]?.id ?? ""}`)}`}
-        totalCorrect={totalCorrect}
-        totalQuestions={questions.length}
-        overallRate={overallRate}
+        totalCorrect={sessionCorrectCount}
+        totalQuestions={sessionTotal}
+        overallRate={sessionRate}
         streak={streak}
         filter={filter}
         onFilterChange={setFilter}

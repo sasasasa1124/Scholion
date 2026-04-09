@@ -111,7 +111,7 @@ export default function AiRefinePopup({
     if (!result || adopting || !hasChanges || editMode) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      if (e.key === "Enter" && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         onAdopt({ question: editedQuestion, choices: editedChoices });
       }

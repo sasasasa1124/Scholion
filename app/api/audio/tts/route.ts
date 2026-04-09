@@ -16,48 +16,36 @@ const GEMINI_TTS_VOICE = "Aoede";
 const POLLY_VOICE_ID = "Ruth"; // English default; can be overridden
 
 async function synthesizeWithPolly(text: string, voiceId: string = POLLY_VOICE_ID): Promise<Uint8Array> {
-  // Lazy load Polly SDK (only on AWS)
-  const polly = await import("@aws-sdk/client-polly");
-  const { PollyClient, SynthesizeSpeechCommand, OutputFormat, Engine } = polly;
+  const { PollyClient, SynthesizeSpeechCommand, OutputFormat, Engine } = await import("@aws-sdk/client-polly");
+  const { FetchHttpHandler } = await import("@smithy/fetch-http-handler");
 
-  const client = new PollyClient({ region: process.env.AWS_REGION || "us-west-2" });
+  const client = new PollyClient({
+    region: process.env.AWS_REGION || "us-west-2",
+    requestHandler: new FetchHttpHandler(),
+  });
 
   try {
     const command = new SynthesizeSpeechCommand({
       Text: text,
       OutputFormat: OutputFormat.MP3,
-      VoiceId: voiceId as any, // Use any to avoid strict type checking with dynamic imports
-      Engine: Engine.GENERATIVE, // Use generative engine for higher quality
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      VoiceId: voiceId as any,
+      Engine: Engine.GENERATIVE,
     });
 
     const response = await client.send(command);
     const audioStream = response.AudioStream;
+    if (!audioStream) throw new Error("No audio stream in Polly response");
 
-    if (!audioStream) {
-      throw new Error("No audio stream in Polly response");
+    // In edge/fetch runtime, AudioStream is a Blob-like object with arrayBuffer()
+    if ("arrayBuffer" in audioStream && typeof (audioStream as Blob).arrayBuffer === "function") {
+      const buffer = await (audioStream as Blob).arrayBuffer();
+      return new Uint8Array(buffer);
     }
 
-    // Convert stream to buffer
-    const chunks: Buffer[] = [];
-
-    // Handle both Node.js stream and Web stream
-    if (audioStream && typeof audioStream === "object") {
-      // If it's a Node.js stream
-      if ("on" in audioStream && typeof audioStream.on === "function") {
-        return new Promise((resolve, reject) => {
-          audioStream.on("data", (chunk: Buffer) => chunks.push(chunk));
-          audioStream.on("end", () => {
-            resolve(new Uint8Array(Buffer.concat(chunks)));
-          });
-          audioStream.on("error", reject);
-        });
-      }
-
-      // If it's a Blob-like object
-      if ("arrayBuffer" in audioStream && typeof audioStream.arrayBuffer === "function") {
-        const buffer = await (audioStream as Blob).arrayBuffer();
-        return new Uint8Array(buffer);
-      }
+    // Fallback: try transformToByteArray (SDK v3 SdkStreamMixin)
+    if ("transformToByteArray" in audioStream && typeof (audioStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray === "function") {
+      return await (audioStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
     }
 
     throw new Error("Unable to read audio stream from Polly response");

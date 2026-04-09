@@ -29,6 +29,7 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const [questions, setQuestions] = useState<Question[]>(initialQuestions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [userInvalidated, setUserInvalidated] = useState<Set<string>>(new Set());
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [versionHistory, setVersionHistory] = useState<QuestionHistoryEntry[]>([]);
   const [versionHistoryLoading, setVersionHistoryLoading] = useState(false);
@@ -151,6 +152,29 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
   const goNext = useCallback(() => { setVersionPanelOpen(false); setCurrentIndex((i) => Math.min(i + 1, filteredQuestions.length - 1)); }, [filteredQuestions.length]);
   const goPrev = useCallback(() => { setVersionPanelOpen(false); setCurrentIndex((i) => Math.max(i - 1, 0)); }, []);
 
+  const handleMarkWrong = useCallback(() => {
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    fetch("/api/scores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ examId, questionId: q.id, correct: false, questionDbId: q.dbId }),
+    }).catch(() => {});
+    goNext();
+  }, [filteredQuestions, currentIndex, examId, goNext]);
+
+  const handleToggleInvalidate = useCallback(async () => {
+    const q = filteredQuestions[currentIndex];
+    if (!q?.dbId) return;
+    const res = await fetch(`/api/user/questions/${q.dbId}/invalidate`, { method: "POST" });
+    const { invalidated } = await res.json() as { invalidated: boolean };
+    setUserInvalidated((prev) => {
+      const next = new Set(prev);
+      if (invalidated) next.add(q.dbId); else next.delete(q.dbId);
+      return next;
+    });
+  }, [filteredQuestions, currentIndex]);
+
   const handleReplay = useCallback(() => {
     const q = filteredQuestions[currentIndex];
     if (!q) return;
@@ -159,13 +183,18 @@ export default function AnswersClient({ questions: initialQuestions, examName, e
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (editingQuestion || refinePopupOpen || factCheckPopupOpen) return;
-      if (e.key === "ArrowRight" || e.key === "Enter") goNext();
-      else if (e.key === "ArrowLeft") goPrev();
+      const letter = e.key.toUpperCase();
+      if (e.key === "ArrowRight" || e.key === "Enter") { goNext(); return; }
+      if (e.key === "ArrowLeft") { goPrev(); return; }
+      if (letter === "W") { handleMarkWrong(); return; }
+      if (letter === "X") { handleToggleInvalidate(); return; }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [editingQuestion, refinePopupOpen, factCheckPopupOpen, goNext, goPrev]);
+  }, [editingQuestion, refinePopupOpen, factCheckPopupOpen, goNext, goPrev, handleMarkWrong, handleToggleInvalidate]);
 
   // Touch swipe
   const touchStartX = useRef<number | null>(null);
