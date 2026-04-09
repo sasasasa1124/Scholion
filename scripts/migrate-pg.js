@@ -70,9 +70,12 @@ async function migrate() {
           //   42701 = duplicate_column (ALTER TABLE ADD COLUMN already exists)
           //   42P07 = duplicate_table  (CREATE TABLE already exists, non-IF-NOT-EXISTS)
           //   42710 = duplicate_object (CREATE INDEX already exists, non-IF-NOT-EXISTS)
+          //   42601 = syntax_error (SQLite-specific syntax like AUTOINCREMENT — skip silently)
           const code = e.code ?? "";
           if (code === "42701" || code === "42P07" || code === "42710") {
             console.log(`[migrate]   skipped (already applied): ${e.message.split("\n")[0]}`);
+          } else if (code === "42601") {
+            console.log(`[migrate]   skipped (SQLite syntax, not PG-compatible): ${e.message.split("\n")[0]}`);
           } else {
             throw e;
           }
