@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getDB } from "@/lib/db";
 import { createBatchJob, runFactCheckJob } from "@/lib/batch-job";
 import { requireAdmin } from "@/lib/auth";
@@ -24,10 +24,11 @@ export async function POST(
 
   try {
     const jobId = await createBatchJob(pg, examId, "factcheck", { userPrompt, forceRecheck });
-    after(async () => {
-      await enqueueBatchJob({ jobId, examId, jobType: "factcheck", params: { userPrompt, forceRecheck } });
-      await runFactCheckJob(pg, jobId, examId, { userPrompt, forceRecheck });
-    });
+    // Fire-and-forget: unawaited async keeps event loop alive in Node.js (App Runner)
+    enqueueBatchJob({ jobId, examId, jobType: "factcheck", params: { userPrompt, forceRecheck } })
+      .catch(e => console.error("[factcheck] sqs enqueue failed:", e instanceof Error ? e.message : String(e)));
+    runFactCheckJob(pg, jobId, examId, { userPrompt, forceRecheck })
+      .catch(e => console.error("[factcheck] background job failed:", e instanceof Error ? e.message : String(e)));
     return NextResponse.json({ jobId });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
