@@ -64,6 +64,7 @@ export async function createBatchJob(
 }
 
 export async function getBatchJob(pg: D1Client, jobId: string): Promise<BatchJobRow | null> {
+  await ensureTable(pg);
   type R = { id: string; exam_id: string; job_type: string; status: string; done: number; total: number; skipped: number; result_count: number; failed: number; error_msg: string | null };
   const [row] = await pg<R[]>`SELECT id, exam_id, job_type, status, done, total, skipped, result_count, failed, error_msg FROM batch_jobs WHERE id = ${jobId}`;
   if (!row) return null;
@@ -71,6 +72,7 @@ export async function getBatchJob(pg: D1Client, jobId: string): Promise<BatchJob
 }
 
 export async function getActiveJob(pg: D1Client, examId: string, jobType: JobType): Promise<BatchJobRow | null> {
+  await ensureTable(pg);
   type R = { id: string; exam_id: string; job_type: string; status: string; done: number; total: number; skipped: number; result_count: number; failed: number; error_msg: string | null };
 
   // Only consider jobs updated within the last 60 minutes — older ones are zombie jobs from crashed workers.

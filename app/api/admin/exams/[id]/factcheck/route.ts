@@ -1,10 +1,10 @@
 export const runtime = 'edge';
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getDB } from "@/lib/db";
 import { createBatchJob, runFactCheckJob } from "@/lib/batch-job";
 import { requireAdmin } from "@/lib/auth";
-import { isAWS } from "@/lib/ai-client";
+import { enqueueBatchJob } from "@/lib/sqs";
 
 export async function POST(
   req: NextRequest,
@@ -26,20 +26,10 @@ export async function POST(
 
   try {
     const jobId = await createBatchJob(pg, examId, "factcheck", { userPrompt, forceRecheck });
-    const task = runFactCheckJob(pg, jobId, examId, { userPrompt, forceRecheck });
-
-    if (isAWS) {
-      void task;
-    } else {
-      try {
-        const { getRequestContext } = await import("@cloudflare/next-on-pages");
-        const { ctx } = getRequestContext() as unknown as { ctx: { waitUntil: (p: Promise<void>) => void } };
-        ctx.waitUntil(task);
-      } catch {
-        void task;
-      }
-    }
-
+    after(async () => {
+      await enqueueBatchJob({ jobId, examId, jobType: "factcheck", params: { userPrompt, forceRecheck } });
+      await runFactCheckJob(pg, jobId, examId, { userPrompt, forceRecheck });
+    });
     return NextResponse.json({ jobId });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

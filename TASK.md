@@ -1,66 +1,89 @@
 # TASK.md
 
-## 機能要件: バッチジョブ + UI 修正 (AWS + Cloudflare)
-
-### 背景・要件
-1. 管理画面の Fill / Wording Fix / Fact Check が AWS・CF 両環境で500エラーまたは無限スピン
-2. CF の個別 AI Wording Fix「Adopt」ボタンが "Update failed" エラー
-3. 問題文表示でアンバー（黄色）ハイライトボックスが不要
+## 機能要件: AWS バッチジョブ完全修正 + UI修正
 
 ---
 
-## 根本原因 (確定)
+## 根本原因 (実ログ確定)
 
-### 1. AWS: batch_jobs テーブル不在
-- `migrate-pg.js` が `ALTER TABLE ADD COLUMN` 重複エラー(42701)で中断し `0021_batch_jobs.sql` に未到達
-- **修正済み** (commit `c7b147d`): ステートメント単位 try-catch で 42701/42P07/42710 をスキップ
+### AWS 環境
 
-### 2. CF: D1 に batch_jobs テーブル未適用
-- wrangler migration が proxy エラーで失敗していた
-- **修正済み** (commit `c7b147d`): `createBatchJob()` 冒頭で `CREATE TABLE IF NOT EXISTS` 自動作成
+| # | 問題 | 証拠 |
+|---|------|------|
+| 1 | **`batch_jobs` テーブル不在** | CloudWatch: `relation "batch_jobs" does not exist (42P01)` 連発 |
+| 2 | **現行インスタンスは古いイメージ** | migration ログに `0021_batch_jobs.sql` が現れず `All migrations applied` で終了 |
+| 3 | **新デプロイが全て exit code 1 で失敗** | Service log: Health check failed × 5回。IAM権限不足（修正済み） |
+| 4 | **`ensureTable()` が status route から未呼び出し** | `getBatchJob()` / `getActiveJob()` が直接クエリ → 毎回 42P01 |
+| 5 | **`void task` が Next.js 15 で非推奨** | `after()` API を使うべき (Next.js 15.1+) |
 
-### 3. CF: ctx.waitUntil の誤ったアクセスパターン (根本原因)
-- `getRequestContext()` は `{ request, env, ctx }` を返すが、コードが `ctx.waitUntil` を直接呼んでいた
-- 正しくは `getRequestContext().ctx.waitUntil`
-- `waitUntil` が実行されず background task がレスポンス送信後に kill されていた → Wording Fix 0/0 の原因
-- **修正中** (本ブランチ): refine/fill/factcheck の 3 route を修正
+### Cloudflare 環境
+- `ensureTable()` の問題は同様
+- D1 migration 未適用時も同じ失敗パターン
 
-### 4. CF: suggestions adopt route に不要な edge runtime
-- `app/api/suggestions/[id]/adopt/route.ts` に `export const runtime = 'edge'` があり CF で失敗
-- **修正中** (本ブランチ): edge runtime 宣言を削除
-
-### 5. UI: 問題文アンバーハイライト
-- `QuizQuestion.tsx` の final question を `bg-amber-50/border-amber-200` ボックスで囲んでいた
-- **修正中** (本ブランチ): グレーの区切り線に変更
+### UI 問題
+| # | 問題 | 場所 |
+|---|------|------|
+| 6 | Alternative採用後にQuiz表示が更新されない | `SuggestPanel.tsx` の `handleAdopt` が `router.refresh()` を呼ばない |
+| 7 | Suggest入力欄でEnterキーが送信されない | textarea/input に `onKeyDown` ハンドラーなし |
 
 ---
 
-## 実装 Todo
+## SQS アーキテクチャ
 
-### ブランチ: `fix/ui-and-adopt-route` (現在のブランチ)
+SQSキュー: `https://sqs.us-west-2.amazonaws.com/435788423370/Scholion`
 
-- [x] `app/api/suggestions/[id]/adopt/route.ts` — `export const runtime = 'edge'` 削除
-- [x] `components/QuizQuestion.tsx` — アンバーハイライトを `border-t border-gray-200` に変更
-- [x] `app/api/admin/exams/[id]/refine/route.ts` — `getRequestContext().ctx.waitUntil` に修正
-- [x] `app/api/admin/exams/[id]/fill/route.ts` — 同上
-- [x] `app/api/admin/exams/[id]/factcheck/route.ts` — 同上
-- [ ] TASK.md コミット
-- [ ] `main` マージ → `deploy/aws` push
-- [ ] `deploy/cloudflare` cherry-pick → push
+```
+POST /api/admin/exams/[id]/fill
+  → createBatchJob (batch_jobs: status=pending)
+  → SQS.SendMessage (jobId, examId, type, params)
+  → after(runFillJob) ← Next.js 15 の after() で即時バックグラウンド実行
 
-### テスト
-- CF: Wording Fix ボタン → 進捗が更新される（0/0 で止まらない）
-- CF: AI Wording Fix モーダルの Adopt → 成功する
-- AWS: Wording Fix ボタン → ジョブ作成後に処理が進む
-- 両環境: 問題文のアンバーハイライトが消える
+Client → GET /batch-status?jobId=xxx → batch_jobs から done/total を返す
+```
+
+- `batch_jobs` テーブルはProgress追跡のために維持（SQSはDispatch担当）
+- CF環境ではSQS送信スキップ（isAWSフラグで制御）
+
+---
+
+## 実装 Todo (ブランチ: `fix/batch-sqs-and-ui-fixes`)
+
+### Phase 1: batch-job.ts 修正
+- [ ] `getBatchJob()` に `ensureTable()` 追加
+- [ ] `getActiveJob()` に `ensureTable()` 追加
+
+### Phase 2: SQS 統合 (AWS専用)
+- [ ] `lib/sqs.ts` 新規作成 (`@aws-sdk/client-sqs` 使用)
+- [ ] `package.json` に `@aws-sdk/client-sqs` 追加
+
+### Phase 3: バッチルート修正
+- [ ] `app/api/admin/exams/[id]/fill/route.ts`: `void task` → `after(task)` + SQS enqueue
+- [ ] `app/api/admin/exams/[id]/refine/route.ts`: 同上
+- [ ] `app/api/admin/exams/[id]/factcheck/route.ts`: 同上
+- [ ] `app/api/admin/questions/[id]/fill/route.ts`: 同上 (個別問題fill)
+- [ ] `app/api/admin/questions/[id]/refine/route.ts`: 同上
+- [ ] `app/api/admin/questions/[id]/factcheck/route.ts`: 同上
+
+### Phase 4: UI修正
+- [ ] `components/SuggestPanel.tsx`: adopt後 `router.refresh()` 追加
+- [ ] `components/SuggestPanel.tsx`: textarea/input に Enter keyDown handler 追加
+
+### Phase 5: デプロイ・確認
+- [ ] TASK.md コミット (このファイル)
+- [ ] コード修正コミット
+- [ ] `main` → `deploy/aws` push (GitHub Actions 起動)
+- [ ] App Runner 新イメージ起動確認 (`0021_batch_jobs.sql` 適用)
+- [ ] CloudWatch で `42P01` エラー消滅確認
+- [ ] fill/refine/factcheck が jobId を返し進捗が更新されること確認
 
 ---
 
 ## 完了済みタスク
 
 - [x] `scripts/migrate-pg.js` 冪等化 (`c7b147d`)
-- [x] `lib/batch-job.ts` D1 auto-create (`c7b147d`)
+- [x] `lib/batch-job.ts` D1 auto-create ensureTable (`c7b147d`)
 - [x] batch-status try-catch (`db76701`)
 - [x] ゾンビジョブ自動クリーン (`5ac6a2c`)
-- [x] Admin route から edge runtime 削除-AWS 修正 (`5da210b`)
+- [x] Admin route から edge runtime 削除 - AWS 修正 (`5da210b`)
 - [x] AWS Polly TTS + Gemini フォールバック (`79f599a`)
+- [x] IAM権限修正 (ユーザー対応済み)

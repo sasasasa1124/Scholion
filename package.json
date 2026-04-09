@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-polly": "^3.1025.0",
+    "@aws-sdk/client-sqs": "^3.1027.0",
     "@google/genai": "^1.45.0",
     "@types/diff": "^7.0.2",
     "amazon-cognito-identity-js": "^6.3.16",
