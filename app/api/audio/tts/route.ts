@@ -17,13 +17,10 @@ const GEMINI_TTS_VOICE = "Aoede";
 const POLLY_VOICE_ID = "Ruth"; // English default; can be overridden
 
 async function synthesizeWithPolly(text: string, voiceId: string = POLLY_VOICE_ID): Promise<Uint8Array> {
+  // Use us-east-1 for Polly — Generative engine is only available there
   const { PollyClient, SynthesizeSpeechCommand, OutputFormat, Engine } = await import("@aws-sdk/client-polly");
-  const { FetchHttpHandler } = await import("@smithy/fetch-http-handler");
 
-  const client = new PollyClient({
-    region: process.env.AWS_REGION || "us-west-2",
-    requestHandler: new FetchHttpHandler(),
-  });
+  const client = new PollyClient({ region: "us-east-1" });
 
   try {
     const command = new SynthesizeSpeechCommand({
@@ -38,15 +35,15 @@ async function synthesizeWithPolly(text: string, voiceId: string = POLLY_VOICE_I
     const audioStream = response.AudioStream;
     if (!audioStream) throw new Error("No audio stream in Polly response");
 
-    // In edge/fetch runtime, AudioStream is a Blob-like object with arrayBuffer()
+    // SDK v3: transformToByteArray is the standard way in Node.js
+    if ("transformToByteArray" in audioStream && typeof (audioStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray === "function") {
+      return await (audioStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+    }
+
+    // Fallback: Blob-like object
     if ("arrayBuffer" in audioStream && typeof (audioStream as Blob).arrayBuffer === "function") {
       const buffer = await (audioStream as Blob).arrayBuffer();
       return new Uint8Array(buffer);
-    }
-
-    // Fallback: try transformToByteArray (SDK v3 SdkStreamMixin)
-    if ("transformToByteArray" in audioStream && typeof (audioStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray === "function") {
-      return await (audioStream as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
     }
 
     throw new Error("Unable to read audio stream from Polly response");
