@@ -17,10 +17,10 @@ const GEMINI_TTS_VOICE = "Aoede";
 const POLLY_VOICE_ID = "Ruth"; // English default; can be overridden
 
 async function synthesizeWithPolly(text: string, voiceId: string = POLLY_VOICE_ID): Promise<Uint8Array> {
-  // Use us-east-1 for Polly — Generative engine is only available there
+  // Neural engine — available in us-west-2, same region as App Runner
   const { PollyClient, SynthesizeSpeechCommand, OutputFormat, Engine } = await import("@aws-sdk/client-polly");
 
-  const client = new PollyClient({ region: "us-east-1" });
+  const client = new PollyClient({ region: process.env.AWS_REGION || "us-west-2" });
 
   try {
     const command = new SynthesizeSpeechCommand({
@@ -28,7 +28,7 @@ async function synthesizeWithPolly(text: string, voiceId: string = POLLY_VOICE_I
       OutputFormat: OutputFormat.MP3,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       VoiceId: voiceId as any,
-      Engine: Engine.GENERATIVE,
+      Engine: Engine.NEURAL,
     });
 
     const response = await client.send(command);
