@@ -1,29 +1,28 @@
 /**
  * POST /api/admin/import
  *
- * Accepts an Excel (.xlsx/.xls) or CSV file, uploads it to the Gemini Files API,
- * runs an agentic codeExecution loop to inspect the structure and convert to a
- * standardised question list, then bulk-inserts into PostgreSQL.
+ * Accepts an Excel (.xlsx/.xls) or CSV file, parses it server-side,
+ * then uses the unified AI adapter (Gemini or Bedrock) to convert
+ * the data into standardised exam questions and bulk-inserts into the DB.
  *
  * Streams progress as Server-Sent Events:
  *   data: { step: "upload" | "inspect" | "convert" | "saving" | "done" | "error", ...fields }
  */
 
 import { NextRequest } from "next/server";
-import { GoogleGenAI } from "@google/genai";
-import type { Content, GenerateContentResponse } from "@google/genai";
-import { getDB, getSetting, getNow } from "@/lib/db";
+import { aiGenerate } from "@/lib/ai-client";
+import { getDB, getNow } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { getUserEmail } from "@/lib/user";
-import { parseAiJson } from "@/lib/ai-json";
+import { parseAiJsonAs } from "@/lib/ai-json";
 import { ImportedQuestionsSchema } from "@/lib/ai-schemas";
 import type { ImportedQuestion } from "@/lib/ai-schemas";
+import { parseUploadedFile } from "@/lib/file-parser";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MAX_TURNS = 6;
-const JSON_START = "===JSON_START===";
-const JSON_END = "===JSON_END===";
+/** Max questions per AI call to stay within token limits */
+const BATCH_SIZE = 80;
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -33,15 +32,13 @@ const SSE_HEADERS = {
 
 // ── System instruction ───────────────────────────────────────────────────────
 
-const SYSTEM_INSTRUCTION = `You are a data conversion specialist for a Salesforce certification quiz application.
-Your task is to convert an arbitrary Excel or CSV file into a standardised list of exam questions.
+const SYSTEM_PROMPT = `You are a data conversion specialist for a certification quiz application.
+Your task is to convert structured file data into a standardised JSON array of exam questions.
 
 ## Output Format
 
-Output a JSON array between these exact markers:
-${JSON_START}
+Respond with a JSON array ONLY (no markdown fences, no explanation):
 [{"num":1,"question":"...","choices":["A. opt","B. opt","C. opt","D. opt"],"answer":["A"],"explanation":"...","source":""}]
-${JSON_END}
 
 Field rules:
 - num: integer, 1-based question number
@@ -51,67 +48,15 @@ Field rules:
 - explanation: explanation text (empty string if none)
 - source: source URL or reference (empty string if none)
 
-## Workflow
-
-1. In your FIRST response, write code to inspect the file:
-   - List available files in the current directory
-   - If Excel: print sheet names, column headers of each sheet, and 3 sample rows
-   - If CSV: print column headers and 3 sample rows
-   - Then describe your column mapping plan in text
-
-2. In your SECOND response (after the user says "proceed"):
-   - Write code that reads the file and converts ALL questions to the JSON format above
-   - Print the full JSON between ${JSON_START} and ${JSON_END}
-   - Do NOT truncate — include every question
-
-## Important notes
-- Use codeExecution to inspect and convert the file (pandas and openpyxl are available)
-- The uploaded file is accessible in the current working directory by its display name
-- Japanese column headers are fine — identify columns by content/position, not just name
-- Handle both embedded choices (in the same cell, newline-separated) and separate choice columns
+## Important
+- Convert ALL rows — do NOT truncate or summarize
+- Japanese/Chinese/Korean column headers are fine — identify by content
+- Handle both embedded choices (in same cell, newline-separated) and separate choice columns
 - Normalise answers: extract uppercase letters only
-- Skip rows where both question and answer are empty`;
+- Skip rows where both question and answer are empty
+- If choices are not labelled with letters, assign A, B, C, D... in order`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
-}
-
-function detectMimeType(filename: string): string {
-  const ext = filename.toLowerCase().split(".").pop() ?? "";
-  const map: Record<string, string> = {
-    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    xls: "application/vnd.ms-excel",
-    csv: "text/csv",
-  };
-  return map[ext] ?? "application/octet-stream";
-}
-
-/** Extract JSON array from code execution output between marker lines. */
-function extractJsonFromOutput(text: string): unknown {
-  const s = text.indexOf(JSON_START);
-  const e = text.indexOf(JSON_END);
-  if (s === -1 || e === -1 || e <= s) return null;
-  return parseAiJson(text.slice(s + JSON_START.length, e).trim());
-}
-
-/** Scan all codeExecutionResult parts in a response for the JSON markers. */
-function extractJsonFromResponse(response: GenerateContentResponse): unknown {
-  const parts = response.candidates?.[0]?.content?.parts ?? [];
-  for (const part of parts) {
-    if (part.codeExecutionResult?.output) {
-      const found = extractJsonFromOutput(part.codeExecutionResult.output);
-      if (found !== null) return found;
-    }
-    // Also check plain text parts (model sometimes embeds JSON in text)
-    if (part.text) {
-      const found = extractJsonFromOutput(part.text);
-      if (found !== null) return found;
-    }
-  }
-  return null;
-}
 
 /** Build {label, text} choices from the string array the agent outputs. */
 function buildOptions(choices: string[]): { label: string; text: string }[] {
@@ -128,10 +73,6 @@ export async function POST(req: NextRequest) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
-  if (process.env.DEPLOY_TARGET === "aws") {
-    return new Response(JSON.stringify({ error: "File import requires Google Gemini (not available on AWS)" }), { status: 503 });
-  }
-
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const examId = (formData.get("examId") as string | null)?.trim();
@@ -143,17 +84,11 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: "file and examId are required" }), { status: 400 });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500 });
-  }
-
   const pg = getDB();
   if (!pg) {
     return new Response(JSON.stringify({ error: "DB not available" }), { status: 503 });
   }
   const now = getNow(pg);
-
   const userEmail = await getUserEmail();
 
   const stream = new ReadableStream({
@@ -162,154 +97,85 @@ export async function POST(req: NextRequest) {
       const send = (data: object) => {
         try {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch {
-          // ignore — client disconnected; DB writes must continue
-        }
+        } catch { /* client disconnected */ }
       };
 
       try {
-        // ── 1. Upload file to Gemini Files API ────────────────────────────
-        send({ step: "upload", message: "Uploading file to Gemini..." });
+        // ── 1. Parse file server-side ──────────────────────────────────────
+        send({ step: "upload", message: "Reading file..." });
 
-        const ai = new GoogleGenAI({ apiKey });
-        const model = (await getSetting("gemini_model")) ?? "gemini-2.5-flash-preview-05-20";
+        const parsed = await parseUploadedFile(file, sheetHint);
 
-        const fileBytes = await file.arrayBuffer();
-        const mimeType = detectMimeType(file.name);
-        const blob = new Blob([fileBytes], { type: mimeType });
+        if (parsed.rows.length === 0) {
+          send({ step: "error", message: "File contains no data rows." });
+          return controller.close();
+        }
 
-        let fileInfo = await ai.files.upload({
-          file: blob,
-          config: { mimeType, displayName: file.name },
+        send({
+          step: "inspect",
+          message: `Found ${parsed.rows.length} rows in "${parsed.sheet}" with columns: ${parsed.headers.join(", ")}`,
         });
 
-        // Poll until ACTIVE (binary files may take a few seconds)
-        for (let i = 0; i < 15 && fileInfo.state === "PROCESSING"; i++) {
-          await sleep(2000);
-          fileInfo = await ai.files.get({ name: fileInfo.name! });
-        }
+        // ── 2. Convert via AI (batch if large) ────────────────────────────
+        send({ step: "convert", message: `Converting ${parsed.rows.length} rows via AI...` });
 
-        if (fileInfo.state !== "ACTIVE") {
-          send({ step: "error", message: `File upload failed (state: ${fileInfo.state})` });
-          return controller.close();
-        }
+        const allQuestions: ImportedQuestion[] = [];
+        const totalRows = parsed.rows.length;
+        const batches = Math.ceil(totalRows / BATCH_SIZE);
 
-        // ── 2. Agentic loop ───────────────────────────────────────────────
-        send({ step: "inspect", message: "Analyzing file structure..." });
+        for (let b = 0; b < batches; b++) {
+          const startIdx = b * BATCH_SIZE;
+          const endIdx = Math.min(startIdx + BATCH_SIZE, totalRows);
+          const batchRows = parsed.rows.slice(startIdx, endIdx);
 
-        const sheetClause = sheetHint
-          ? ` Focus on the sheet named "${sheetHint}".`
-          : "";
+          // Build a text representation for this batch
+          const batchText = buildBatchText(parsed.headers, batchRows, startIdx);
 
-        const contents: Content[] = [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `Please inspect this exam file and identify its structure.${sheetClause}
+          const numOffset = allQuestions.length;
+          const batchPrompt = batches > 1
+            ? `Convert the following rows (${startIdx + 1}–${endIdx} of ${totalRows}) to JSON. Start numbering from ${numOffset + 1}.\n\n${batchText}`
+            : `Convert all rows to JSON.\n\n${batchText}`;
 
-First, list the available files in the current directory using os.listdir('.') or similar.
-Then open the file, list sheet names (if Excel), print column headers, and show 3–5 sample data rows.
-Finally, describe your plan for mapping columns to: num, question, choices, answer, explanation, source.`,
-              },
-              {
-                fileData: {
-                  fileUri: fileInfo.uri!,
-                  mimeType,
-                },
-              },
-            ],
-          },
-        ];
-
-        let rawQuestions: unknown = null;
-
-        for (let turn = 0; turn < MAX_TURNS; turn++) {
-          const response = await ai.models.generateContent({
-            model,
-            contents,
-            config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
-              tools: [{ codeExecution: {} }],
-            },
+          const result = await aiGenerate(batchPrompt, {
+            jsonMode: true,
+            systemPrompt: SYSTEM_PROMPT,
+            maxTokens: 16384,
+            timeoutMs: 120_000,
           });
 
-          // Accumulate conversation history
-          const modelContent = response.candidates?.[0]?.content;
-          if (modelContent) contents.push(modelContent);
-
-          // Relay agent log as inspect events (first two turns)
-          if (turn < 2 && response.text) {
-            send({ step: "inspect", message: response.text.slice(0, 400) });
+          const { data, error } = parseAiJsonAs(result.text, ImportedQuestionsSchema);
+          if (!data) {
+            send({ step: "error", message: `AI validation failed (batch ${b + 1}/${batches}): ${error}` });
+            return controller.close();
           }
 
-          // Try to extract JSON from this turn's code execution output
-          rawQuestions = extractJsonFromResponse(response);
-          if (rawQuestions !== null) {
-            send({ step: "convert", message: "Questions extracted, validating..." });
-            break;
-          }
+          allQuestions.push(...data);
 
-          // Inject continuation prompt
-          if (turn === 0) {
-            // After inspection: ask for full conversion
-            send({ step: "convert", message: "Converting questions..." });
-            contents.push({
-              role: "user",
-              parts: [
-                {
-                  text: `Great. Now please convert ALL questions in the file to the JSON format.
-Write Python code that reads the file and prints every question between the markers:
-${JSON_START}
-[...all questions as JSON array...]
-${JSON_END}
-
-Include every question — do not truncate. Use the column mapping you just identified.`,
-                },
-              ],
-            });
-          } else {
-            // Subsequent turns: nudge
-            contents.push({
-              role: "user",
-              parts: [
-                {
-                  text: `Please output the complete questions JSON between ${JSON_START} and ${JSON_END} markers in a code execution block. Do not truncate.`,
-                },
-              ],
+          if (batches > 1) {
+            send({
+              step: "convert",
+              message: `Batch ${b + 1}/${batches} done (${data.length} questions)`,
+              done: endIdx,
+              total: totalRows,
             });
           }
         }
 
-        if (rawQuestions === null) {
-          send({ step: "error", message: "Agent did not produce questions after maximum turns." });
+        if (allQuestions.length === 0) {
+          send({ step: "error", message: "AI returned 0 questions." });
           return controller.close();
         }
 
-        // ── 3. Zod validation ─────────────────────────────────────────────
-        const validation = ImportedQuestionsSchema.safeParse(rawQuestions);
-        if (!validation.success) {
-          send({ step: "error", message: `Schema validation failed: ${validation.error.message}` });
-          return controller.close();
-        }
+        // ── 3. Bulk insert ───────────────────────────────────────────────
+        send({ step: "saving", message: `Saving ${allQuestions.length} questions...`, done: 0, total: allQuestions.length });
 
-        const questions: ImportedQuestion[] = validation.data;
-        if (questions.length === 0) {
-          send({ step: "error", message: "Agent returned 0 questions." });
-          return controller.close();
-        }
-
-        // ── 4. Bulk insert ────────────────────────────────────────────────
-        send({ step: "saving", message: `Saving ${questions.length} questions...`, done: 0, total: questions.length });
-
-        // Upsert exam record
         await pg`
           INSERT INTO exams (id, name, lang, created_by)
           VALUES (${examId}, ${examName ?? examId}, ${lang}, ${userEmail})
           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, lang = EXCLUDED.lang`;
 
         let saved = 0;
-        for (const q of questions) {
+        for (const q of allQuestions) {
           const qId = `${examId}__${q.num}`;
           const options = buildOptions(q.choices);
 
@@ -330,13 +196,10 @@ Include every question — do not truncate. Use the column mapping you just iden
               source        = EXCLUDED.source`;
 
           saved++;
-          if (saved % 20 === 0 || saved === questions.length) {
-            send({ step: "saving", done: saved, total: questions.length });
+          if (saved % 20 === 0 || saved === allQuestions.length) {
+            send({ step: "saving", done: saved, total: allQuestions.length });
           }
         }
-
-        // ── 5. Clean up uploaded file ──────────────────────────────────────
-        await ai.files.delete({ name: fileInfo.name! }).catch(() => {/* non-fatal */});
 
         send({ step: "done", examId, count: saved });
       } catch (e) {
@@ -349,4 +212,25 @@ Include every question — do not truncate. Use the column mapping you just iden
   });
 
   return new Response(stream, { headers: SSE_HEADERS });
+}
+
+// ── Batch text builder ──────────────────────────────────────────────────────
+
+function buildBatchText(headers: string[], rows: string[][], startIdx: number): string {
+  const lines: string[] = [];
+  lines.push(`Columns: ${headers.join(" | ")}`);
+  lines.push("");
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const cells = headers.map((h, j) => {
+      const val = (row[j] ?? "").trim();
+      const display = val.length > 500 ? val.slice(0, 500) + "..." : val;
+      return `${h}: ${display}`;
+    });
+    lines.push(`--- Row ${startIdx + i + 1} ---`);
+    lines.push(cells.join("\n"));
+  }
+
+  return lines.join("\n");
 }

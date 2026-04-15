@@ -248,7 +248,7 @@ export default function ImportPage() {
   const importFailed = importStep === "error" || !!importError;
 
   const STEP_LABELS: Record<ImportStep, string> = {
-    upload: "Uploading file to Gemini",
+    upload: "Reading file",
     inspect: "Analyzing file structure",
     convert: "Converting questions",
     saving: "Saving to database",

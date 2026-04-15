@@ -36,6 +36,8 @@ export interface AiGenerateOptions {
   model?: string;
   /** Per-request timeout in ms (default 25000). */
   timeoutMs?: number;
+  /** Override max output tokens (Bedrock default: 4096 for JSON, 2048 otherwise). */
+  maxTokens?: number;
 }
 
 export interface AiGenerateResult {
@@ -182,7 +184,7 @@ async function bedrockGenerate(
 
   // For batch jobs (fill/refine/factcheck), use lower token limit for speed
   // JSON responses need more tokens; others can use less
-  const maxTokens = options.jsonMode ? 4096 : 2048;
+  const maxTokens = options.maxTokens ?? (options.jsonMode ? 4096 : 2048);
 
   const body: Record<string, unknown> = {
     anthropic_version: "bedrock-2023-05-31",

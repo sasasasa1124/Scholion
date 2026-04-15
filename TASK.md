@@ -14,6 +14,8 @@
 - [x] **スライダーの過去履歴半透明化** — ExamTrendChart: 直近10セッション以外のdot/lineをopacity 0.3に
 - [x] **AWS TTS 修正** — Polly synthesizer: FetchHttpHandlerで edge-compatible化、transformToByteArray対応
 
+- [x] **Import機能 導線追加 + AWS Bedrock対応** — ExamListClientヘッダーにFileUpアイコン追加、Import/Feedbackルートを aiGenerate() に統一（Gemini/Bedrock自動切替）、file-parser.tsでサーバーサイドExcel/CSV解析
+
 ---
 
 ## 未着手タスク

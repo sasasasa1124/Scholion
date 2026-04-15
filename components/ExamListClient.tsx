@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, RotateCcw, Upload, Download, Plus, X, User, Search, Flame, Sparkles, Trash2 } from "lucide-react";
+import { ChevronRight, RotateCcw, Upload, Download, Plus, X, User, Search, Flame, Sparkles, Trash2, FileUp } from "lucide-react";
 import Link from "next/link";
 import type { ExamMeta } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
@@ -87,6 +87,13 @@ export default function ExamListClient({ exams: initialExams }: Props) {
           </button>
         ))}
       </div>
+      <Link
+        href="/admin/import"
+        className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        title="Import Exam"
+      >
+        <FileUp size={14} />
+      </Link>
       <Link
         href="/profile"
         className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
