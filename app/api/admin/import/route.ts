@@ -222,6 +222,7 @@ export async function POST(req: NextRequest) {
         } catch { /* client disconnected */ }
       };
 
+      let keepalive: ReturnType<typeof setInterval> | null = null;
       try {
         // ── 1. Parse file server-side ──────────────────────────────────────
         send({ step: "upload", message: "Reading file..." });
@@ -244,6 +245,11 @@ export async function POST(req: NextRequest) {
           step: "inspect",
           message: `Found ${parsed.rows.length} rows in "${parsed.sheet}" with columns: ${parsed.headers.join(", ")}`,
         });
+
+        // Keepalive: send periodic pings during AI processing to prevent chunked encoding errors
+        keepalive = setInterval(() => {
+          send({ step: "convert", message: "Processing..." });
+        }, 15_000);
 
         // ── 2. Convert via AI ────────────────────────────────────────────
         let allQuestions: ImportedQuestion[];
@@ -307,6 +313,8 @@ export async function POST(req: NextRequest) {
           allQuestions = applyMapping(parsed.headers, parsed.rows, mapping);
         }
 
+        if (keepalive) clearInterval(keepalive);
+
         if (allQuestions.length === 0) {
           send({ step: "error", message: "No questions extracted from file." });
           return controller.close();
@@ -351,9 +359,11 @@ export async function POST(req: NextRequest) {
 
         send({ step: "done", examId, count: saved });
       } catch (e) {
+        if (keepalive) clearInterval(keepalive);
         const msg = e instanceof Error ? e.message : String(e);
         send({ step: "error", message: msg });
       } finally {
+        if (keepalive) clearInterval(keepalive);
         controller.close();
       }
     },
