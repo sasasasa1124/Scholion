@@ -79,6 +79,10 @@ export async function POST(req: NextRequest) {
   const examName = (formData.get("examName") as string | null)?.trim() || examId;
   const lang = (formData.get("lang") as string | null) ?? "ja";
   const sheetHint = (formData.get("sheetHint") as string | null)?.trim() || null;
+  const hiddenColsRaw = (formData.get("hiddenCols") as string | null)?.trim() || null;
+  const hiddenCols: Set<number> = new Set(
+    hiddenColsRaw ? (JSON.parse(hiddenColsRaw) as number[]) : []
+  );
 
   if (!file || !examId) {
     return new Response(JSON.stringify({ error: "file and examId are required" }), { status: 400 });
@@ -100,6 +104,7 @@ export async function POST(req: NextRequest) {
         } catch { /* client disconnected */ }
       };
 
+      let keepalive: ReturnType<typeof setInterval> | null = null;
       try {
         // ── 1. Parse file server-side ──────────────────────────────────────
         send({ step: "upload", message: "Reading file..." });
@@ -111,10 +116,23 @@ export async function POST(req: NextRequest) {
           return controller.close();
         }
 
+        // Filter out hidden columns
+        if (hiddenCols.size > 0) {
+          parsed.headers = parsed.headers.filter((_, i) => !hiddenCols.has(i));
+          parsed.rows = parsed.rows.map((row) =>
+            row.filter((_, i) => !hiddenCols.has(i))
+          );
+        }
+
         send({
           step: "inspect",
           message: `Found ${parsed.rows.length} rows in "${parsed.sheet}" with columns: ${parsed.headers.join(", ")}`,
         });
+
+        // Keepalive: send periodic pings during AI processing to prevent chunked encoding errors
+        keepalive = setInterval(() => {
+          send({ step: "convert", message: "Processing..." });
+        }, 15_000);
 
         // ── 2. Convert via AI (batch if large) ────────────────────────────
         send({ step: "convert", message: `Converting ${parsed.rows.length} rows via AI...` });
@@ -161,6 +179,8 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        clearInterval(keepalive);
+
         if (allQuestions.length === 0) {
           send({ step: "error", message: "AI returned 0 questions." });
           return controller.close();
@@ -203,9 +223,11 @@ export async function POST(req: NextRequest) {
 
         send({ step: "done", examId, count: saved });
       } catch (e) {
+        if (keepalive) clearInterval(keepalive);
         const msg = e instanceof Error ? e.message : String(e);
         send({ step: "error", message: msg });
       } finally {
+        if (keepalive) clearInterval(keepalive);
         controller.close();
       }
     },

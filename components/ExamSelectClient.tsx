@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { RotateCcw, ChevronRight, Download, Upload, Plus, X } from "lucide-react";
+import { RotateCcw, ChevronRight, Download, Upload, Plus, X, Loader2, Search } from "lucide-react";
 import type { ExamMeta } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 import { useSetHeader } from "@/lib/header-context";
+import { useSettings } from "@/lib/settings-context";
+
+const LANG_LABELS: Record<Locale, string> = { en: "EN", ja: "JA", zh: "ZH", ko: "KO" };
 
 interface Props {
   exams: ExamMeta[];
@@ -39,12 +43,15 @@ async function uploadFile(file: File): Promise<ExamMeta> {
 
 export default function ExamSelectClient({ exams: initialExams, mode }: Props) {
   const router = useRouter();
+  const { settings } = useSettings();
   const [exams, setExams] = useState<ExamMeta[]>(initialExams);
   const [statsMap, setStatsMap] = useState<Record<string, { pct: number | null; answered: number; total: number; wrongCount: number }>>({});
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [translateSearch, setTranslateSearch] = useState("");
+  const [translatingId, setTranslatingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const dragCountRef = useRef(0);
 
@@ -115,6 +122,67 @@ export default function ExamSelectClient({ exams: initialExams, mode }: Props) {
     setTimeout(() => setUploadStatus("idle"), 2000);
     if (fileRef.current) fileRef.current.value = "";
   }, []);
+
+  // Exams in other languages available for translation
+  const translatableExams = useMemo(() => {
+    const lang = settings.language;
+    return exams.filter((e) => {
+      if (e.language === lang) return false;
+      // Hide if a translated version already exists
+      const translatedId = `${e.id}_${lang}`;
+      return !exams.some((x) => x.id === translatedId);
+    });
+  }, [exams, settings.language]);
+
+  const filteredTranslatable = useMemo(() => {
+    if (!translateSearch.trim()) return translatableExams;
+    const q = translateSearch.toLowerCase();
+    return translatableExams.filter((e) => e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
+  }, [translatableExams, translateSearch]);
+
+  const handleTranslate = useCallback(async (exam: ExamMeta) => {
+    const targetLang = settings.language;
+    setTranslatingId(exam.id);
+    try {
+      const res = await fetch(`/api/admin/exams/${encodeURIComponent(exam.id)}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLanguage: targetLang }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      // Consume SSE to track progress, final event has newExamId
+      const reader = res.body!.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let newExamId: string | null = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() ?? "";
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(part.slice(6)) as { newExamId?: string; error?: string };
+            if (evt.error) throw new Error(evt.error);
+            if (evt.newExamId) newExamId = evt.newExamId;
+          } catch (e) {
+            if (e instanceof Error && e.message !== "parse failed") throw e;
+          }
+        }
+      }
+
+      if (newExamId) {
+        router.refresh();
+      }
+    } catch {
+      // silently fail for now
+    } finally {
+      setTranslatingId(null);
+    }
+  }, [settings.language]);
 
   // Global drag & drop
   useEffect(() => {
@@ -274,6 +342,49 @@ export default function ExamSelectClient({ exams: initialExams, mode }: Props) {
                   </div>
                 </button>
               </div>
+
+              {/* Translate from another language */}
+              {translatableExams.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">Translate from another language</p>
+                  {translatableExams.length > 4 && (
+                    <div className="relative mb-2">
+                      <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300" />
+                      <input
+                        type="text"
+                        value={translateSearch}
+                        onChange={(e) => setTranslateSearch(e.target.value)}
+                        placeholder="Search..."
+                        className="w-full h-8 pl-7 pr-3 rounded-lg border border-gray-200 text-xs text-gray-600 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                      />
+                    </div>
+                  )}
+                  <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-100">
+                    {filteredTranslatable.map((exam) => (
+                      <button
+                        key={exam.id}
+                        onClick={() => handleTranslate(exam)}
+                        disabled={translatingId !== null}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 disabled:opacity-50"
+                      >
+                        {translatingId === exam.id ? (
+                          <Loader2 size={12} className="text-scholion-500 animate-spin shrink-0" />
+                        ) : null}
+                        <span className="flex-1 text-xs text-gray-700 truncate">{exam.name}</span>
+                        <span className="text-[10px] font-semibold text-gray-300 uppercase shrink-0">
+                          {LANG_LABELS[exam.language] ?? exam.language}
+                        </span>
+                      </button>
+                    ))}
+                    {filteredTranslatable.length === 0 && (
+                      <p className="text-xs text-gray-300 text-center py-3">No matches</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-300 text-center mt-2">
+                    Translate → {LANG_LABELS[settings.language]}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

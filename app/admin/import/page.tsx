@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Upload, FileText, ChevronDown, ChevronUp, Send, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { useState, useRef, useMemo, useCallback } from "react";
+import {
+  Upload, FileText, ChevronDown, ChevronUp, Send, CheckCircle,
+  AlertCircle, Loader2, X, Eye, EyeOff, GripVertical,
+} from "lucide-react";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 
 type Lang = "ja" | "en" | "zh" | "ko";
 type ImportStep = "upload" | "inspect" | "convert" | "saving" | "done" | "error";
@@ -30,6 +34,12 @@ interface LogLine {
   type: "info" | "error" | "success";
 }
 
+interface ParsedSheet {
+  name: string;
+  headers: string[];
+  rows: string[][];
+}
+
 // ── SSE consumer ─────────────────────────────────────────────────────────────
 
 async function consumeSSE<T>(
@@ -54,7 +64,46 @@ async function consumeSSE<T>(
   }
 }
 
-// ── Components ────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fileToExamId(name: string): string {
+  return name
+    .replace(/\.(xlsx?|csv)$/i, "")
+    .replace(/[^a-zA-Z0-9\u3040-\u9FFF_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .toLowerCase()
+    .slice(0, 64);
+}
+
+function parseFileClientSide(file: File): Promise<ParsedSheet[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array", cellDates: false });
+        const sheets: ParsedSheet[] = wb.SheetNames.map((name) => {
+          const ws = wb.Sheets[name];
+          const raw = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
+            header: 1, defval: "", raw: false,
+          }) as (string | number)[][];
+          if (raw.length === 0) return { name, headers: [], rows: [] };
+          const headers = raw[0].map(String);
+          const rows = raw.slice(1).map((r) => r.map(String));
+          return { name, headers, rows };
+        });
+        resolve(sheets);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── Components ───────────────────────────────────────────────────────────────
 
 function LogPanel({ lines }: { lines: LogLine[] }) {
   const [open, setOpen] = useState(false);
@@ -84,16 +133,8 @@ function LogPanel({ lines }: { lines: LogLine[] }) {
   );
 }
 
-function ProgressRow({
-  label,
-  active,
-  done,
-  error,
-}: {
-  label: string;
-  active: boolean;
-  done: boolean;
-  error?: boolean;
+function ProgressRow({ label, active, done, error }: {
+  label: string; active: boolean; done: boolean; error?: boolean;
 }) {
   return (
     <div className="flex items-center gap-2 text-sm">
@@ -113,15 +154,93 @@ function ProgressRow({
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── Preview table ────────────────────────────────────────────────────────────
+
+function PreviewTable({ sheet, hiddenCols, onToggleCol }: {
+  sheet: ParsedSheet;
+  hiddenCols: Set<number>;
+  onToggleCol: (idx: number) => void;
+}) {
+  const PREVIEW_ROWS = 5;
+  const visibleHeaders = sheet.headers.map((h, i) => ({ h, i }));
+
+  return (
+    <div className="space-y-2">
+      {/* Column toggles */}
+      <div className="flex flex-wrap gap-1.5">
+        {visibleHeaders.map(({ h, i }) => {
+          const hidden = hiddenCols.has(i);
+          return (
+            <button
+              key={i}
+              onClick={() => onToggleCol(i)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
+                hidden
+                  ? "bg-gray-100 text-gray-300 line-through"
+                  : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              {hidden ? <EyeOff size={10} /> : <Eye size={10} />}
+              {h || `Col ${i + 1}`}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto rounded-lg border border-gray-100">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-2 py-1.5 text-left text-gray-400 font-medium w-8">#</th>
+              {visibleHeaders
+                .filter(({ i }) => !hiddenCols.has(i))
+                .map(({ h, i }) => (
+                  <th key={i} className="px-2 py-1.5 text-left text-gray-500 font-medium max-w-[200px] truncate">
+                    {h || `Col ${i + 1}`}
+                  </th>
+                ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sheet.rows.slice(0, PREVIEW_ROWS).map((row, ri) => (
+              <tr key={ri} className="border-t border-gray-50">
+                <td className="px-2 py-1.5 text-gray-300 tabular-nums">{ri + 1}</td>
+                {visibleHeaders
+                  .filter(({ i }) => !hiddenCols.has(i))
+                  .map(({ i }) => (
+                    <td key={i} className="px-2 py-1.5 text-gray-600 max-w-[200px] truncate">
+                      {(row[i] ?? "").slice(0, 80)}
+                    </td>
+                  ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[11px] text-gray-300 text-right">
+        Showing {Math.min(PREVIEW_ROWS, sheet.rows.length)} of {sheet.rows.length} rows
+        {hiddenCols.size > 0 && ` · ${hiddenCols.size} column${hiddenCols.size > 1 ? "s" : ""} hidden`}
+      </p>
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ImportPage() {
-  // Form state
+  // File + preview state
   const [file, setFile] = useState<File | null>(null);
-  const [examId, setExamId] = useState("");
+  const [sheets, setSheets] = useState<ParsedSheet[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState(0);
+  const [hiddenCols, setHiddenCols] = useState<Set<number>>(new Set());
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  // Form state
   const [examName, setExamName] = useState("");
   const [lang, setLang] = useState<Lang>("ja");
-  const [sheetHint, setSheetHint] = useState("");
 
   // Import state
   const [importing, setImporting] = useState(false);
@@ -142,11 +261,56 @@ export default function ImportPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Import handler ──────────────────────────────────────────────────────────
+  const activeSheet = sheets[selectedSheet] ?? null;
+
+  // ── File select + parse ──────────────────────────────────────────────────
+
+  const handleFileSelect = useCallback(async (f: File | null) => {
+    setFile(f);
+    setSheets([]);
+    setSelectedSheet(0);
+    setHiddenCols(new Set());
+    setParseError(null);
+    setImportStep(null);
+    setImportError(null);
+
+    if (!f) return;
+
+    const baseName = f.name.replace(/\.(xlsx?|csv)$/i, "");
+    setExamName(baseName);
+
+    setParsing(true);
+    try {
+      const parsed = await parseFileClientSide(f);
+      const nonEmpty = parsed.filter((s) => s.rows.length > 0);
+      if (nonEmpty.length === 0) {
+        setParseError("No data rows found in file.");
+        return;
+      }
+      setSheets(nonEmpty);
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setParsing(false);
+    }
+  }, []);
+
+  const toggleCol = useCallback((idx: number) => {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  }, []);
+
+  // ── Import handler ─────────────────────────────────────────────────────────
 
   async function handleImport(e: React.FormEvent) {
     e.preventDefault();
-    if (!file || !examId.trim()) return;
+    if (!file || !activeSheet) return;
+
+    const autoExamId = fileToExamId(file.name);
+    if (!autoExamId) return;
 
     setImporting(true);
     setImportStep(null);
@@ -158,16 +322,25 @@ export default function ImportPage() {
 
     const form = new FormData();
     form.append("file", file);
-    form.append("examId", examId.trim());
-    form.append("examName", examName.trim() || examId.trim());
+    form.append("examId", autoExamId);
+    form.append("examName", examName.trim() || file.name.replace(/\.(xlsx?|csv)$/i, ""));
     form.append("lang", lang);
-    if (sheetHint.trim()) form.append("sheetHint", sheetHint.trim());
+    if (activeSheet.name !== "CSV") form.append("sheetHint", activeSheet.name);
+    // Send hidden columns so the server can filter them out
+    if (hiddenCols.size > 0) {
+      form.append("hiddenCols", JSON.stringify([...hiddenCols]));
+    }
 
     try {
       const res = await fetch("/api/admin/import", { method: "POST", body: form });
       if (!res.ok) {
-        const body = await res.json() as { error?: string };
-        setImportError(body.error ?? `HTTP ${res.status}`);
+        let errorMsg = `HTTP ${res.status}`;
+        try {
+          const body = await res.json() as { error?: string };
+          errorMsg = body.error ?? errorMsg;
+        } catch { /* non-json response */ }
+        setImportError(errorMsg);
+        setImportStep("error");
         return;
       }
 
@@ -192,12 +365,13 @@ export default function ImportPage() {
       });
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
+      setImportStep("error");
     } finally {
       setImporting(false);
     }
   }
 
-  // ── Feedback handler ────────────────────────────────────────────────────────
+  // ── Feedback handler ───────────────────────────────────────────────────────
 
   async function handleFeedback(e: React.FormEvent) {
     e.preventDefault();
@@ -242,7 +416,7 @@ export default function ImportPage() {
     }
   }
 
-  // ── Derived state ───────────────────────────────────────────────────────────
+  // ── Derived state ──────────────────────────────────────────────────────────
 
   const importDone = importStep === "done";
   const importFailed = importStep === "error" || !!importError;
@@ -258,7 +432,7 @@ export default function ImportPage() {
 
   const stepOrder: ImportStep[] = ["upload", "inspect", "convert", "saving", "done"];
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#f8f9fb]">
@@ -288,8 +462,11 @@ export default function ImportPage() {
               <span className="text-sm text-gray-600 truncate flex-1">
                 {file ? file.name : "Choose .xlsx / .xls / .csv"}
               </span>
-              {file && (
+              {file && !parseError && (
                 <FileText size={14} className="text-emerald-500 shrink-0" />
+              )}
+              {parsing && (
+                <Loader2 size={14} className="text-gray-400 animate-spin shrink-0" />
               )}
             </div>
             <input
@@ -297,24 +474,54 @@ export default function ImportPage() {
               type="file"
               accept=".xlsx,.xls,.csv"
               className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => handleFileSelect(e.target.files?.[0] ?? null)}
             />
+            {parseError && (
+              <p className="text-xs text-rose-500 mt-1">{parseError}</p>
+            )}
           </div>
 
-          {/* Exam ID + Name */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Sheet selector (for multi-sheet Excel) */}
+          {sheets.length > 1 && (
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
-                Exam ID
+                Sheet
               </label>
-              <input
-                type="text"
-                value={examId}
-                onChange={(e) => setExamId(e.target.value)}
-                placeholder="my_exam_en"
-                className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
+              <div className="flex flex-wrap gap-1.5">
+                {sheets.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setSelectedSheet(i); setHiddenCols(new Set()); }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      i === selectedSheet
+                        ? "bg-gray-900 text-white"
+                        : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                    }`}
+                  >
+                    {s.name} ({s.rows.length})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Preview table */}
+          {activeSheet && activeSheet.rows.length > 0 && (
+            <div>
+              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
+                Preview
+              </label>
+              <PreviewTable
+                sheet={activeSheet}
+                hiddenCols={hiddenCols}
+                onToggleCol={toggleCol}
               />
             </div>
+          )}
+
+          {/* Display Name */}
+          {activeSheet && (
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
                 Display Name
@@ -323,55 +530,47 @@ export default function ImportPage() {
                 type="text"
                 value={examName}
                 onChange={(e) => setExamName(e.target.value)}
-                placeholder="My Exam (optional)"
+                placeholder={file ? file.name.replace(/\.(xlsx?|csv)$/i, "") : "Auto-filled from filename"}
                 className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
               />
             </div>
-          </div>
+          )}
 
-          {/* Lang + Sheet hint */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
-                Language
-              </label>
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value as Lang)}
-                className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-200"
-              >
-                <option value="ja">Japanese</option>
-                <option value="en">English</option>
-                <option value="zh">Chinese</option>
-                <option value="ko">Korean</option>
-              </select>
+          {/* Lang */}
+          {activeSheet && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Language
+                </label>
+                <select
+                  value={lang}
+                  onChange={(e) => setLang(e.target.value as Lang)}
+                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-200"
+                >
+                  <option value="ja">Japanese</option>
+                  <option value="en">English</option>
+                  <option value="zh">Chinese</option>
+                  <option value="ko">Korean</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1.5">
-                Sheet hint <span className="normal-case font-normal">(optional)</span>
-              </label>
-              <input
-                type="text"
-                value={sheetHint}
-                onChange={(e) => setSheetHint(e.target.value)}
-                placeholder="Sheet1"
-                className="w-full h-10 px-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
-              />
-            </div>
-          </div>
+          )}
 
           {/* Submit */}
-          <button
-            type="submit"
-            disabled={importing || !file || !examId.trim()}
-            className="w-full h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {importing ? (
-              <><Loader2 size={15} className="animate-spin" /> Importing...</>
-            ) : (
-              "Import"
-            )}
-          </button>
+          {activeSheet && (
+            <button
+              type="submit"
+              disabled={importing || !file || !activeSheet}
+              className="w-full h-10 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {importing ? (
+                <><Loader2 size={15} className="animate-spin" /> Importing...</>
+              ) : (
+                `Import ${activeSheet.rows.length} rows`
+              )}
+            </button>
+          )}
         </form>
 
         {/* Progress panel */}
@@ -438,7 +637,7 @@ export default function ImportPage() {
               <textarea
                 value={feedbackText}
                 onChange={(e) => setFeedbackText(e.target.value)}
-                placeholder="e.g. 選択肢が「A. テキスト」形式になっていない。全問修正して。"
+                placeholder='e.g. 選択肢が「A. テキスト」形式になっていない。全問修正して。'
                 rows={3}
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-200"
               />
