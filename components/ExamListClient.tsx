@@ -45,87 +45,6 @@ function isExcelFile(f: File): boolean {
   return /\.(xlsx?|xls)$/i.test(f.name);
 }
 
-function fileToExamId(name: string): string {
-  return name
-    .replace(/\.(xlsx?|csv)$/i, "")
-    .replace(/[^a-zA-Z0-9\u3040-\u9FFF_-]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_|_$/g, "")
-    .toLowerCase()
-    .slice(0, 64);
-}
-
-interface ImportEvent {
-  step: string;
-  message?: string;
-  done?: number;
-  total?: number;
-  examId?: string;
-  count?: number;
-}
-
-async function importExcelFile(
-  file: File,
-  lang: string,
-  onProgress: (evt: ImportEvent) => void
-): Promise<ExamMeta | null> {
-  const examId = fileToExamId(file.name);
-  const examName = file.name.replace(/\.(xlsx?|csv)$/i, "");
-
-  const form = new FormData();
-  form.append("file", file);
-  form.append("examId", examId);
-  form.append("examName", examName);
-  form.append("lang", lang);
-
-  const res = await fetch("/api/admin/import", { method: "POST", body: form });
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try { const b = await res.json() as { error?: string }; msg = b.error ?? msg; } catch { /* */ }
-    throw new Error(msg);
-  }
-
-  const reader = res.body!.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  let resultExamId: string | undefined;
-  let resultCount: number | undefined;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split("\n\n");
-    buf = parts.pop() ?? "";
-    for (const part of parts) {
-      if (!part.startsWith("data: ")) continue;
-      try {
-        const evt = JSON.parse(part.slice(6)) as ImportEvent;
-        onProgress(evt);
-        if (evt.step === "done") {
-          resultExamId = evt.examId;
-          resultCount = evt.count;
-        }
-        if (evt.step === "error") {
-          throw new Error(evt.message ?? "Import failed");
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message !== "Import failed") continue;
-        throw e;
-      }
-    }
-  }
-
-  if (!resultExamId) return null;
-  return {
-    id: resultExamId,
-    name: file.name.replace(/\.(xlsx?|csv)$/i, ""),
-    questionCount: resultCount ?? 0,
-    language: lang as Locale,
-    tags: [],
-  };
-}
-
 export default function ExamListClient({ exams: initialExams }: Props) {
   const router = useRouter();
   const { settings, updateSettings } = useSettings();
@@ -280,37 +199,10 @@ export default function ExamListClient({ exams: initialExams }: Props) {
       if (excelFiles.length === 0) setTimeout(() => setUploadStatus("idle"), 2000);
     }
 
-    // Excel: AI code execution import
-    for (const ef of excelFiles) {
-      setUploadStatus("importing");
-      setUploadProgress(null);
-      setUploadErrorMsg(null);
-      try {
-        const exam = await importExcelFile(ef, langFilter, (evt) => {
-          if (evt.message) {
-            setUploadErrorMsg(null); // clear any previous message
-          }
-          if (evt.done != null && evt.total != null) {
-            setUploadProgress({ done: evt.done, total: evt.total });
-          }
-        });
-        if (exam) {
-          setExams((prev) => {
-            const exists = prev.find((e) => e.id === exam.id);
-            return exists ? prev.map((e) => (e.id === exam.id ? exam : e)) : [...prev, exam];
-          });
-          setUploadedExam(exam);
-          setPreviewName(exam.name);
-          setPreviewLang(exam.language);
-          setPreviewTags(["Salesforce"]);
-          setPreviewTagInput("");
-          setUploadStatus("done");
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setUploadErrorMsg(msg);
-        setUploadStatus("error");
-      }
+    // Excel: redirect to dedicated import page
+    if (excelFiles.length > 0) {
+      router.push("/admin/import");
+      return;
     }
 
     setTimeout(() => setUploadStatus("idle"), 3000);
