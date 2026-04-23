@@ -172,7 +172,11 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
-      const num = parseInt(row["#"] ?? String(i + 1), 10);
+      // Fall back to sequential index when "#" is missing OR empty string
+      // (empty string → parseInt → NaN → every question collapses to `${examId}__NaN`).
+      const rawNum = (row["#"] ?? "").trim();
+      const parsed = rawNum ? parseInt(rawNum, 10) : NaN;
+      const num = Number.isFinite(parsed) && parsed > 0 ? parsed : i + 1;
       const id = `${examId}__${num}`;
       const choices = parseChoices(row["choices"] ?? "");
       const answers = parseAnswers(row["answer"] ?? row["answers"] ?? "");
