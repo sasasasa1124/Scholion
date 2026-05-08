@@ -12,6 +12,7 @@ Scholionは資格試験対策アプリです。より詳細な機能の要件は
 AWSは、ブランチ `deploy/aws`, デプロイ先: https://bngmzhtypy.us-west-2.awsapprunner.com/
 Cloudflareは、ブランチ `deploy/cloudflare`, デプロイ先: https://quiz-aad.pages.dev/
 ※ `scholion` remote (`kota-sasamoto_sfemu/scholion`) はデプロイには使用しない
+※ GCP Cloud Run環境 (`deploy/gcp`) は廃止済み
 
 それぞれ独立した環境・デプロイ用ブランチで管理され、ローカル開発やGit操作を含む全てのワークフローは、AIの拡張スキル（MCP等）を積極的に活用して処理してください。
 
